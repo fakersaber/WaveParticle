@@ -5,6 +5,8 @@
 #include "Engine/Texture2D.h"
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "ProceduralMeshComponent.h"
+#include "PhysicsEngine/BodySetup.h"
 
 static const float Y_PI = 3.1415926535897932f;
 float FWaveParticle::Size = 0.f;
@@ -14,19 +16,21 @@ uint32 FWaveParticle::height = 0;
 // Sets default values
 AParticleWave::AParticleWave()
 {
- 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 	ParticleNum = 1;
 	ParticleScale = 1.f;
 	//32x32顶点的Plane
-	PlaneSize.X = 31;
-	PlaneSize.Y = 31;
-	VectorFieldSize.X = 31;
-	VectorFieldSize.Y = 31;
+	PlaneSize.X = 63;
+	PlaneSize.Y = 63;
+	VectorFieldSize.X = 64;
+	VectorFieldSize.Y = 64;
 	MaxParticleSpeed = 1.f;
 	MinParticleSpeed = 0.f;
 	Beta = 0.5f;
 	bHasInit = false;
+
+	//WaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaveMesh"));
 }
 
 // Called when the game starts or when spawned
@@ -56,6 +60,10 @@ void AParticleWave::ClearResource() {
 	ParticleContainer.Reset();
 
 	UpdateTextureRegion2D.Reset();
+
+	//if (WaveMesh){
+	//	WaveMesh->ClearAllMeshSections();
+	//}
 }
 
 
@@ -73,6 +81,12 @@ void AParticleWave::InitWaveParticle() {
 	FWaveParticle::height = FMath::CeilToInt(FWaveParticle::Size / VectorFieldDensityY);
 
 
+	//init Mesh
+	{
+		//GeneratorWaveMesh();
+	}
+
+
 	//init particle position and speed
 	{
 		//分段函数,速度转换的线性函数[0,0.5) 为负，[0.5,1]为正
@@ -87,11 +101,9 @@ void AParticleWave::InitWaveParticle() {
 			auto Sign_X = FMath::Sign(RandomSpeedX);
 			auto Sign_Y = FMath::Sign(RandomSpeedY);
 			RandomSpeedX = Sign_Y < 0 ? RandomSpeedX * SpeedK - MinParticleSpeed : RandomSpeedX * SpeedK + MinParticleSpeed;
-			RandomSpeedY = Sign_Y < 0  ? RandomSpeedY * SpeedK - MinParticleSpeed : RandomSpeedY * SpeedK + MinParticleSpeed;
+			RandomSpeedY = Sign_Y < 0 ? RandomSpeedY * SpeedK - MinParticleSpeed : RandomSpeedY * SpeedK + MinParticleSpeed;
 			FVector2D Speed(RandomSpeedX, RandomSpeedY);
 			ParticleContainer.Emplace(Position, Speed);
-
-
 		}
 	}
 
@@ -107,21 +119,63 @@ void AParticleWave::InitWaveParticle() {
 
 	//Init Material
 	{
-		UStaticMeshComponent* StaticMeshComponent = FindComponentByClass<UStaticMeshComponent>();
-		check(StaticMeshComponent);
-		UMaterialInterface* mat = StaticMeshComponent->GetMaterial(0);
-		UMaterialInstanceDynamic* DynamicMaterialInstance = StaticMeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, mat);
-		DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
+		//UStaticMeshComponent* StaticMeshComponent = FindComponentByClass<UStaticMeshComponent>();
+		//check(StaticMeshComponent);
+		TArray<UStaticMeshComponent*> AllMeshComponent;
+		GetComponents(AllMeshComponent);
+
+		for (UStaticMeshComponent* MeshComponent : AllMeshComponent) {
+			UMaterialInterface* mat = MeshComponent->GetMaterial(0);
+			UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, mat);
+			DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
+		}
 	}
 
 }
+
+
+void AParticleWave::GeneratorWaveMesh() {
+
+	WaveMesh->GetBodySetup()->bNeverNeedsCookedCollisionData = true;
+
+	TArray<int32> Triangles;
+
+	TArray<FVector> WaveVertices;
+
+	TArray<FVector2D> UVs;
+
+	FVector2D Center(PlaneSize.X * 0.5f, PlaneSize.Y * 0.5f);
+
+	for (int j = 0; j < PlaneSize.Y + 1; j++) {
+		for (int i = 0; i < PlaneSize.X + 1; i++) {
+			UVs.Emplace(i / static_cast<float>(PlaneSize.X), j / static_cast<float>(PlaneSize.Y));
+			WaveVertices.Emplace(i - Center.X, j - Center.Y, 0.f);
+		}
+	}
+
+	for (int j = 0; j < PlaneSize.Y; j++) {
+		for (int i = 0; i < PlaneSize.X; i++) {
+			int idx = j * (PlaneSize.X + 1) + i;
+			Triangles.Add(idx);
+			Triangles.Add(idx + PlaneSize.X + 1);
+			Triangles.Add(idx + 1);
+
+			Triangles.Add(idx + 1);
+			Triangles.Add(idx + PlaneSize.X + 1);
+			Triangles.Add(idx + PlaneSize.X + 1 + 1);
+		}
+	}
+
+	WaveMesh->CreateMeshSection(0, WaveVertices, Triangles, TArray<FVector>(), UVs, TArray<FColor>(), TArray<FProcMeshTangent>(), false);
+}
+
 
 void AParticleWave::UpdateParticle(float DeltaTime) {
 
 	FMemory::Memzero(VectorField.GetData(), 4 * sizeof(float) * VectorFieldSize.X * VectorFieldSize.Y);
 
 
-	for (uint32 i = 0; i < ParticleNum; i++){
+	for (uint32 i = 0; i < ParticleNum; i++) {
 
 		ParticleContainer[i].Position += ParticleContainer[i].Speed * DeltaTime;
 
@@ -137,15 +191,17 @@ void AParticleWave::UpdateParticle(float DeltaTime) {
 		//对应边缘quad的实际Mesh坐标
 		FVector2D RealStartPosition(StartPositionIndex.X * VectorFieldDensityX, StartPositionIndex.Y * VectorFieldDensityY);
 
-		for (uint32 x = 0; x < FWaveParticle::width; x++){
-			for (uint32 y = 0; y < FWaveParticle::height; y++){
+
+
+		for (uint32 y = 0; y < FWaveParticle::height; y++) {
+			for (uint32 x = 0; x < FWaveParticle::width; x++) {
 
 				FVector2D CurPosition(RealStartPosition.X + x * VectorFieldDensityX, RealStartPosition.Y + y * VectorFieldDensityY);
 				FVector2D offset(ParticleContainer[i].Position - CurPosition);
 				FVector2D Direction;
 				float length = 1;
 				offset.ToDirectionAndLength(Direction, length);
-				
+
 				float param = FWaveParticle::Size * 0.5f < length ? 0.f : 1.f;
 				float PlanePlacement = param * Beta * FMath::Sin(length / ParticleScale);
 				FVector2D newpos = Direction * PlanePlacement;
@@ -247,11 +303,11 @@ void AParticleWave::PostEditChangeProperty(FPropertyChangedEvent& PropertyChange
 	UProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty;
 	const FName MemberPropertyName = MemberPropertyThatChanged != NULL ? MemberPropertyThatChanged->GetFName() : NAME_None;
 
-	bool bWaveProperyChanged = 
+	bool bWaveProperyChanged =
 		MemberPropertyName == Name_PlaneSize ||
 		MemberPropertyName == Name_VectorFieldSize ||
 		MemberPropertyName == Name_MaxParticleSpeed ||
-		MemberPropertyName == Name_MinParticleSpeed || 
+		MemberPropertyName == Name_MinParticleSpeed ||
 		MemberPropertyName == Name_ParticleNum ||
 		MemberPropertyName == Name_ParticleSize ||
 		MemberPropertyName == Name_Beta;

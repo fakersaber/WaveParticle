@@ -11,6 +11,7 @@ public class Water : ModuleRules
 		PublicIncludePaths.AddRange(
 			new string[] {
 				// ... add public include paths required here ...
+
 			}
 			);
 				
@@ -27,7 +28,8 @@ public class Water : ModuleRules
 			{
 				"Core",
                 "RenderCore",
-                "RHI"
+                "RHI",
+				"ProceduralMeshComponent"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

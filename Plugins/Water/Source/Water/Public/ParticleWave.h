@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "ParticleWave.generated.h"
 
+class UProceduralMeshComponent;
 
 struct FWaveParticle {
 	FWaveParticle(const FVector2D& position, const FVector2D& Speed)
@@ -48,6 +49,8 @@ public:
 
 	void ClearResource();
 
+	void GeneratorWaveMesh();
+
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 
@@ -89,6 +92,9 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
 		UTexture2D* VectorFieldTex;
 
+	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
+		UProceduralMeshComponent* WaveMesh;
+
 private:
 	TArray<FWaveParticle> ParticleContainer;
 
@@ -101,4 +107,5 @@ private:
 	TArray<float> VectorField;
 
 	bool bHasInit;
+
 };
