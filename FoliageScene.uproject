@@ -9,18 +9,13 @@
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
 			"AdditionalDependencies": [
-				"Engine",
-				"ProceduralMeshComponent"
+				"Engine"
 			]
 		}
 	],
 	"Plugins": [
 		{
-			"Name": "RenderDocPlugin",
-			"Enabled": true
-		},
-		{
-			"Name": "ProceduralMeshComponent",
+			"Name": "Water",
 			"Enabled": true
 		}
 	]

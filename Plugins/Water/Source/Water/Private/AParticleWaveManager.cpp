@@ -8,8 +8,14 @@
 #include "ProceduralMeshComponent.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "WaveParticleTile.h"
+#include "RHI.h"
 
 static const float Y_PI = 3.1415926535897932f;
+const FVector2D AParticleWaveManager::UVScale1 = FVector2D(0.125f,0.125f);
+const FVector2D AParticleWaveManager::UVScale2 = FVector2D(0.25f, 0.25f);
+const FVector2D AParticleWaveManager::UVScale3 = FVector2D(0.5f, 0.5f);
+
+
 float FWaveParticle::Size = 0.f;
 uint32 FWaveParticle::width = 0;
 uint32 FWaveParticle::height = 0;
@@ -87,6 +93,8 @@ void AParticleWaveManager::InitWaveParticle() {
 
 	VectorField.SetNumZeroed(VectorFieldSize.X * VectorFieldSize.Y * 4);
 
+	NormalMapData.SetNumZeroed(VectorFieldSize.X * VectorFieldSize.Y * 4);
+
 	WaveParticleTileContainer.Reserve(TileSize.X * TileSize.Y);
 
 	//求单位向量场所的quad大小
@@ -124,46 +132,79 @@ void AParticleWaveManager::InitWaveParticle() {
 		VectorFieldTex->AddressX = TA_Wrap;
 		VectorFieldTex->AddressY = TA_Wrap;
 		VectorFieldTex->UpdateResource();
+
+		NormalMapTex = UTexture2D::CreateTransient(VectorFieldSize.X, VectorFieldSize.Y, PF_A32B32G32R32F);
+		NormalMapTex->Filter = TF_Bilinear;
+		NormalMapTex->AddressX = TA_Wrap;
+		NormalMapTex->AddressY = TA_Wrap;
+		NormalMapTex->UpdateResource();
+
+		
 		UpdateTextureRegion2D = MakeShared<FUpdateTextureRegion2D>(0, 0, 0, 0, VectorFieldSize.X, VectorFieldSize.Y);
 	}
 
 
 	//Spawn Actor
 	{
-		TArray<UStaticMeshComponent*> AllMeshComponent;
-		GetComponents(AllMeshComponent);
+		//TArray<UStaticMeshComponent*> AllMeshComponent;
+		//GetComponents(AllMeshComponent);
 
-		for (UStaticMeshComponent* MeshComponent : AllMeshComponent) {
-			UMaterialInterface* mat = MeshComponent->GetMaterial(0);
-			UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, mat);
-			DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
+		//for (UStaticMeshComponent* MeshComponent : AllMeshComponent) {
+		//	UMaterialInterface* mat = MeshComponent->GetMaterial(0);
+		//	UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, mat);
+		//	DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
+
+		//	//DynamicMaterialInstance->SetScalarParameterValue("EdgeVaule")
+		//}
+		 
+		FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
+
+		FVector2D HalfTileMeshSize(TileMeshSize * 0.5f);
+
+		FVector2D Center(TileSize.X * HalfTileMeshSize.X, TileSize.Y * HalfTileMeshSize.Y);
+
+		for (int y = 0; y < TileSize.Y; ++y) {
+			for (int x = 0; x < TileSize.X; ++x) {
+
+				FVector PositionOffset(FVector2D(x * TileMeshSize.X + HalfTileMeshSize.X, y * TileMeshSize.Y + HalfTileMeshSize.Y) - Center, 0.f);
+
+				auto NewActor = GetWorld()->SpawnActor<AWaveParticleTile>(WaveClassType, GetActorLocation() + PositionOffset, GetActorRotation());
+
+				NewActor->GeneratorWaveMesh(GridSize, PlaneSize);
+				UProceduralMeshComponent* MeshComponent = NewActor->FindComponentByClass<UProceduralMeshComponent>();
+				UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, WaterMaterial);
+				DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
+				DynamicMaterialInstance->SetTextureParameterValue("FieldNormal", NormalMapTex);
+				
+				//2^-1 2^-2 2^-3 均可以精确表示
+				float EdgeValueX1 = FMath::Frac(AParticleWaveManager::UVScale1.X * x);
+				float EdgeValueY1 = FMath::Frac(AParticleWaveManager::UVScale1.Y * y);
+
+				float EdgeValueX2 = FMath::Frac(AParticleWaveManager::UVScale2.X * x);
+				float EdgeValueY2 = FMath::Frac(AParticleWaveManager::UVScale2.Y * y);
+
+				float EdgeValueX3 = FMath::Frac(AParticleWaveManager::UVScale3.X * x);
+				float EdgeValueY3 = FMath::Frac(AParticleWaveManager::UVScale3.Y * y);
+
+
+				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX1", EdgeValueX1);
+				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY1", EdgeValueY1);
+
+				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX2", EdgeValueX2);
+				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY2", EdgeValueY2);
+
+				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX3", EdgeValueX3);
+				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY3", EdgeValueY3);
+
+				WaveParticleTileContainer.Emplace(NewActor);
+				NewActor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+			}
 		}
 
-
-		//FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
-
-		//FVector2D HalfTileMeshSize(TileMeshSize * 0.5f);
-
-		//FVector2D Center(TileSize.X * HalfTileMeshSize.X, TileSize.Y * HalfTileMeshSize.Y);
-
-		//for (int y = 0; y < TileSize.Y; ++y) {
-		//	for (int x = 0; x < TileSize.X; ++x) {
-
-		//		FVector PositionOffset(FVector2D(x * TileMeshSize.X + HalfTileMeshSize.X, y * TileMeshSize.Y + HalfTileMeshSize.Y) - Center, 0.f);
-
-		//		auto NewActor = GetWorld()->SpawnActor<AWaveParticleTile>(WaveClassType, GetActorLocation() + PositionOffset, GetActorRotation());
-
-		//		NewActor->GeneratorWaveMesh(GridSize, PlaneSize);
-		//		UProceduralMeshComponent* MeshComponent = NewActor->FindComponentByClass<UProceduralMeshComponent>();
-		//		UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, WaterMaterial);
-		//		DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
-
-		//		WaveParticleTileContainer.Emplace(NewActor);
-		//		NewActor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
-		//	}
-		//}
-
 	}
+
+	//单位VectorField表示的虚幻长度
+	TILE_SIZE_X2 = 2.f * PlaneSize.X * GridSize / 100.f / VectorFieldSize.X;
 
 }
 
@@ -171,7 +212,7 @@ void AParticleWaveManager::InitWaveParticle() {
 void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 
 	FMemory::Memzero(VectorField.GetData(), 4 * sizeof(float) * VectorFieldSize.X * VectorFieldSize.Y);
-
+	FMemory::Memzero(NormalMapData.GetData(), 4 * sizeof(float) * VectorFieldSize.X * VectorFieldSize.Y);
 
 	for (uint32 i = 0; i < ParticleNum; i++) {
 
@@ -212,8 +253,34 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 		}
 	}
 
-	//caculate normal,假定
-	//for()
+	//calculate normal
+
+	{
+		for (int32 y = 0; y < VectorFieldSize.Y; ++y) {
+			for (int32 x = 0; x < VectorFieldSize.X; ++x) {
+				
+				uint32 LeftIndex = (x - 1) & (VectorFieldSize.X - 1);
+				uint32 RightIndex = (x + 1) & (VectorFieldSize.X - 1);
+
+				uint32 TopIndex = (y - 1) & (VectorFieldSize.Y - 1);
+				uint32 DownIndex = (y + 1) & (VectorFieldSize.Y - 1);
+
+				float leftZ = VectorField[(y * VectorFieldSize.X + LeftIndex) * 4 + 2];
+				float RightZ = VectorField[(y * VectorFieldSize.X + RightIndex) * 4 + 2];
+
+				float TopZ = VectorField[(TopIndex * VectorFieldSize.Y + x) * 4 + 2];
+				float DownZ = VectorField[(DownIndex * VectorFieldSize.Y + x) * 4 + 2];
+				
+				//gradient
+				int32 PlacementIndex = (y * VectorFieldSize.X + x) * 4;
+				NormalMapData[PlacementIndex] = leftZ - RightZ;
+				NormalMapData[PlacementIndex + 1] = TopZ - DownZ;
+				NormalMapData[PlacementIndex + 2] = TILE_SIZE_X2;
+				NormalMapData[PlacementIndex + 3] = 0.f;
+			}
+		}
+	}
+
 
 	VectorFieldTex->UpdateTextureRegions(
 		0,
@@ -224,11 +291,18 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 		reinterpret_cast<uint8*>(VectorField.GetData())
 	);
 
-
+	NormalMapTex->UpdateTextureRegions(
+		0,
+		1,
+		UpdateTextureRegion2D.Get(),
+		sizeof(float) * 4 * VectorFieldSize.X,
+		16,
+		reinterpret_cast<uint8*>(NormalMapData.GetData())
+	);
 
 }
 
-
+#if WITH_EDITOR
 static FName Name_PlaneSize = GET_MEMBER_NAME_CHECKED( AParticleWaveManager, PlaneSize);
 static FName Name_VectorFieldSize = GET_MEMBER_NAME_CHECKED( AParticleWaveManager, VectorFieldSize);
 static FName Name_MaxParticleSpeed = GET_MEMBER_NAME_CHECKED( AParticleWaveManager, MaxParticleSpeed);
@@ -266,6 +340,7 @@ void AParticleWaveManager::PostEditChangeProperty(FPropertyChangedEvent& Propert
 
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
+#endif
 
 //for (int i = 0; i < ParticleNum; ++i) {
 

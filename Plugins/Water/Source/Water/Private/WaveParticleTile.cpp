@@ -70,9 +70,17 @@ void AWaveParticleTile::Tick(float DeltaTime)
 
 
 
+//float U = UV.x * UVScale.x + EdgeValueX;
+//float V = UV.y * UVScale.y + EdgeValuey;
+//return float2(U,V);
+//
+//float U = UV.x == 0.f ? UVScale.x * EdgeValueX : UV.x * UVScale.x;
+//float V = UV.y == 0.f ? UVScale.y * EdgeValueY : UV.y * UVScale.y;
+//float2 Result = float2(U, V);
+//return Result;
 
-
-//float U = UV.x == 0.f ? UVScale * EdgeValue : 0.f;
-//float V = UV.y == 0.f ? UVScale * EdgeValue : 0.f;
-//float2 Result = UV + float2(U, V);
+//float2 dDx = (Right - Left) * INV_TILE_SIZE;
+//float2 dDy = (Bottom - Top) * INV_TILE_SIZE;
+//float J = (1.0 + dDx.x) * (1.0 + dDy.y) - dDx.y * dDy.x;
+//float Result = J < 0.f ? 1.f : J;
 //return Result;

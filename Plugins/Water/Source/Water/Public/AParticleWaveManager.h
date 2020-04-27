@@ -9,6 +9,7 @@
 class UProceduralMeshComponent;
 class AWaveParticleTile;
 class UMaterialInterface;
+struct FUpdateTextureRegion2D;
 
 struct FWaveParticle {
 	FWaveParticle(const FVector2D& position, const FVector2D& Speed)
@@ -56,10 +57,10 @@ public:
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 
-	virtual bool ShouldTickIfViewportsOnly() const override
-	{
-		return true;
-	}
+	//virtual bool ShouldTickIfViewportsOnly() const override
+	//{
+	//	return true;
+	//}
 #endif
 
 
@@ -94,6 +95,9 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
 		UTexture2D* VectorFieldTex;
 
+	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
+		UTexture2D* NormalMapTex;
+
 	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
 		float GridSize;
 
@@ -117,10 +121,21 @@ private:
 
 	float VectorFieldDensityY;
 
+
+	//#TODO use R11G11B10 format
 	TArray<float> VectorField;
+
+	TArray<float> NormalMapData;
 
 	TArray<AWaveParticleTile*> WaveParticleTileContainer;
 
 	bool bHasInit;
 
+	float TILE_SIZE_X2;
+
+
+public:
+	const static FVector2D UVScale1;
+	const static FVector2D UVScale2;
+	const static FVector2D UVScale3;
 };
