@@ -110,7 +110,8 @@ public:
 	UPROPERTY(EditAnywhere,Category = WaveParticleParam)
 		TSubclassOf<AWaveParticleTile> WaveClassType;
 
-
+	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
+		UStaticMesh* WaterMesh;
 
 private:
 	TArray<FWaveParticle> ParticleContainer;
@@ -123,9 +124,9 @@ private:
 
 
 	//#TODO use R11G11B10 format
-	TArray<float> VectorField;
+	TArray<float> VectorField[2];
 
-	TArray<float> NormalMapData;
+	TArray<float> NormalMapData[2];
 
 	TArray<AWaveParticleTile*> WaveParticleTileContainer;
 
@@ -133,6 +134,7 @@ private:
 
 	float TILE_SIZE_X2;
 
+	uint32 CurFrame;
 
 public:
 	const static FVector2D UVScale1;

@@ -4,6 +4,7 @@
 #include "WaveParticleTile.h"
 #include "ProceduralMeshComponent.h"
 #include "PhysicsEngine/BodySetup.h"
+#include "Engine/StaticMesh.h"
 
 // Sets default values
 AWaveParticleTile::AWaveParticleTile()
@@ -11,7 +12,9 @@ AWaveParticleTile::AWaveParticleTile()
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
 
-	WaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("WaveMesh"));
+	WaveMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WaveMesh"));
+
+	//ProceduralWaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("ProceduralWaveMesh"));
 }
 
 // Called when the game starts or when spawned
@@ -20,8 +23,17 @@ void AWaveParticleTile::BeginPlay()
 	Super::BeginPlay();
 }
 
+
+void AWaveParticleTile::GeneratorStaticMesh(UStaticMesh* MeshAsset) {
+
+
+	WaveMesh->SetStaticMesh(MeshAsset);
+}
+
+
+
 void AWaveParticleTile::GeneratorWaveMesh(uint32 GridSize, FIntPoint PlaneSize) {
-	WaveMesh->GetBodySetup()->bNeverNeedsCookedCollisionData = true;
+	ProceduralWaveMesh->GetBodySetup()->bNeverNeedsCookedCollisionData = true;
 
 	TArray<int32> Triangles;
 
@@ -51,7 +63,7 @@ void AWaveParticleTile::GeneratorWaveMesh(uint32 GridSize, FIntPoint PlaneSize) 
 		}
 	}
 
-	WaveMesh->CreateMeshSection(0, WaveVertices, Triangles, TArray<FVector>(), UVs, TArray<FColor>(), TArray<FProcMeshTangent>(), false);
+	ProceduralWaveMesh->CreateMeshSection(0, WaveVertices, Triangles, TArray<FVector>(), UVs, TArray<FColor>(), TArray<FProcMeshTangent>(), false);
 }
 
 

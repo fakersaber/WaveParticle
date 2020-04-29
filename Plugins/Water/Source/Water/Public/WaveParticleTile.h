@@ -31,7 +31,12 @@ public:
 public:
 	void GeneratorWaveMesh(uint32 GridSize, FIntPoint PlaneSize);
 
+	void GeneratorStaticMesh(UStaticMesh* MeshAsset);
+
 public:
 	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
-		UProceduralMeshComponent* WaveMesh;
+		UStaticMeshComponent* WaveMesh;
+
+	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
+		UProceduralMeshComponent* ProceduralWaveMesh;
 };

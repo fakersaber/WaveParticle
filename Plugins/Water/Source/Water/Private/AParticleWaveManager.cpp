@@ -40,6 +40,8 @@ AParticleWaveManager::AParticleWaveManager()
 	TileSize.Y = 1;
 	GridSize = 50.f;
 
+	CurFrame = 0;
+
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("ManagerRootComponent"));
 }
 
@@ -54,7 +56,7 @@ void AParticleWaveManager::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (WaveClassType && WaterMaterial) {
+	if (WaveClassType && WaterMaterial && WaterMesh) {
 		if (!bHasInit) {
 			ClearResource();
 
@@ -90,10 +92,11 @@ void AParticleWaveManager::Destroyed() {
 
 void AParticleWaveManager::InitWaveParticle() {
 
+	for (int i = 0; i < UE_ARRAY_COUNT(VectorField); ++i) {
+		VectorField[i].SetNumZeroed(VectorFieldSize.X * VectorFieldSize.Y * 4);
+		NormalMapData[i].SetNumZeroed(VectorFieldSize.X * VectorFieldSize.Y * 4);
+	}
 
-	VectorField.SetNumZeroed(VectorFieldSize.X * VectorFieldSize.Y * 4);
-
-	NormalMapData.SetNumZeroed(VectorFieldSize.X * VectorFieldSize.Y * 4);
 
 	WaveParticleTileContainer.Reserve(TileSize.X * TileSize.Y);
 
@@ -145,18 +148,7 @@ void AParticleWaveManager::InitWaveParticle() {
 
 
 	//Spawn Actor
-	{
-		//TArray<UStaticMeshComponent*> AllMeshComponent;
-		//GetComponents(AllMeshComponent);
-
-		//for (UStaticMeshComponent* MeshComponent : AllMeshComponent) {
-		//	UMaterialInterface* mat = MeshComponent->GetMaterial(0);
-		//	UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, mat);
-		//	DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
-
-		//	//DynamicMaterialInstance->SetScalarParameterValue("EdgeVaule")
-		//}
-		 
+	{ 
 		FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
 
 		FVector2D HalfTileMeshSize(TileMeshSize * 0.5f);
@@ -167,11 +159,12 @@ void AParticleWaveManager::InitWaveParticle() {
 			for (int x = 0; x < TileSize.X; ++x) {
 
 				FVector PositionOffset(FVector2D(x * TileMeshSize.X + HalfTileMeshSize.X, y * TileMeshSize.Y + HalfTileMeshSize.Y) - Center, 0.f);
-
 				auto NewActor = GetWorld()->SpawnActor<AWaveParticleTile>(WaveClassType, GetActorLocation() + PositionOffset, GetActorRotation());
+				NewActor->GeneratorStaticMesh(WaterMesh);
 
-				NewActor->GeneratorWaveMesh(GridSize, PlaneSize);
-				UProceduralMeshComponent* MeshComponent = NewActor->FindComponentByClass<UProceduralMeshComponent>();
+				//NewActor->GeneratorWaveMesh(GridSize, PlaneSize);
+
+				UStaticMeshComponent* MeshComponent = NewActor->FindComponentByClass<UStaticMeshComponent>();
 				UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, WaterMaterial);
 				DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
 				DynamicMaterialInstance->SetTextureParameterValue("FieldNormal", NormalMapTex);
@@ -211,8 +204,12 @@ void AParticleWaveManager::InitWaveParticle() {
 
 void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 
-	FMemory::Memzero(VectorField.GetData(), 4 * sizeof(float) * VectorFieldSize.X * VectorFieldSize.Y);
-	FMemory::Memzero(NormalMapData.GetData(), 4 * sizeof(float) * VectorFieldSize.X * VectorFieldSize.Y);
+	CurFrame = (CurFrame + 1ul) & 1ul;
+	TArray<float>& CurFrameVectorField = VectorField[CurFrame];
+	TArray<float>& CurFrameNormal = NormalMapData[CurFrame];
+
+	FMemory::Memzero(CurFrameVectorField.GetData(), 4 * sizeof(float) * VectorFieldSize.X * VectorFieldSize.Y);
+	FMemory::Memzero(CurFrameNormal.GetData(), 4 * sizeof(float) * VectorFieldSize.X * VectorFieldSize.Y);
 
 	for (uint32 i = 0; i < ParticleNum; i++) {
 
@@ -237,7 +234,7 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 				FVector2D CurPosition(RealStartPosition.X + x * VectorFieldDensityX, RealStartPosition.Y + y * VectorFieldDensityY);
 				FVector2D offset(ParticleContainer[i].Position - CurPosition);
 				FVector2D Direction;
-				float length = 1;
+				float length = 1.f;
 				offset.ToDirectionAndLength(Direction, length);
 
 				float param = FWaveParticle::Size * 0.5f < length ? 0.f : 1.f;
@@ -245,10 +242,10 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 				FVector2D newpos = Direction * PlanePlacement;
 
 				uint32 gridindex = (VectorFieldSize.X * ((StartPositionIndex.Y + y) % VectorFieldSize.Y) + ((x + StartPositionIndex.X) % VectorFieldSize.X)) * 4;
-				VectorField[gridindex] += newpos.X;
-				VectorField[gridindex + 1] += newpos.Y;
-				VectorField[gridindex + 2] += 0.5 * (FMath::Cos(length / ParticleScale) + 1) * param;
-				VectorField[gridindex + 3] = 0.f;
+				CurFrameVectorField[gridindex] += newpos.X;
+				CurFrameVectorField[gridindex + 1] += newpos.Y;
+				CurFrameVectorField[gridindex + 2] += 0.5 * (FMath::Cos(length / ParticleScale) + 1.f) * param;
+				CurFrameVectorField[gridindex + 3] = 0.f;
 			}
 		}
 	}
@@ -265,18 +262,18 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 				uint32 TopIndex = (y - 1) & (VectorFieldSize.Y - 1);
 				uint32 DownIndex = (y + 1) & (VectorFieldSize.Y - 1);
 
-				float leftZ = VectorField[(y * VectorFieldSize.X + LeftIndex) * 4 + 2];
-				float RightZ = VectorField[(y * VectorFieldSize.X + RightIndex) * 4 + 2];
+				float leftZ = CurFrameVectorField[(y * VectorFieldSize.X + LeftIndex) * 4 + 2];
+				float RightZ = CurFrameVectorField[(y * VectorFieldSize.X + RightIndex) * 4 + 2];
 
-				float TopZ = VectorField[(TopIndex * VectorFieldSize.Y + x) * 4 + 2];
-				float DownZ = VectorField[(DownIndex * VectorFieldSize.Y + x) * 4 + 2];
+				float TopZ = CurFrameVectorField[(TopIndex * VectorFieldSize.Y + x) * 4 + 2];
+				float DownZ = CurFrameVectorField[(DownIndex * VectorFieldSize.Y + x) * 4 + 2];
 				
 				//gradient
 				int32 PlacementIndex = (y * VectorFieldSize.X + x) * 4;
-				NormalMapData[PlacementIndex] = leftZ - RightZ;
-				NormalMapData[PlacementIndex + 1] = TopZ - DownZ;
-				NormalMapData[PlacementIndex + 2] = TILE_SIZE_X2;
-				NormalMapData[PlacementIndex + 3] = 0.f;
+				CurFrameNormal[PlacementIndex] = leftZ - RightZ;
+				CurFrameNormal[PlacementIndex + 1] = TopZ - DownZ;
+				CurFrameNormal[PlacementIndex + 2] = TILE_SIZE_X2;
+				CurFrameNormal[PlacementIndex + 3] = 0.f;
 			}
 		}
 	}
@@ -288,7 +285,7 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 		UpdateTextureRegion2D.Get(),
 		sizeof(float) * 4 * VectorFieldSize.X,
 		16,
-		reinterpret_cast<uint8*>(VectorField.GetData())
+		reinterpret_cast<uint8*>(CurFrameVectorField.GetData())
 	);
 
 	NormalMapTex->UpdateTextureRegions(
@@ -297,7 +294,7 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 		UpdateTextureRegion2D.Get(),
 		sizeof(float) * 4 * VectorFieldSize.X,
 		16,
-		reinterpret_cast<uint8*>(NormalMapData.GetData())
+		reinterpret_cast<uint8*>(CurFrameNormal.GetData())
 	);
 
 }
