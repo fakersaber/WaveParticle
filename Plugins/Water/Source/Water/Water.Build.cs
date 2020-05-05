@@ -29,7 +29,8 @@ public class Water : ModuleRules
 				"Core",
                 "RenderCore",
                 "RHI",
-				"ProceduralMeshComponent"
+                "Projects",
+                "ProceduralMeshComponent"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

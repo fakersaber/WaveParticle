@@ -1,0 +1,57 @@
+#include "/Engine/Public/Platform.ush"
+
+#ifndef THREAD_GROUP_SIZE
+#define THREAD_GROUP_SIZE 8
+#endif
+
+
+uint ThreadWidth;
+
+uint ParticleWidth;
+uint ParticleHeight;
+float2 VectorFieldDensity;
+float ParticleSize;
+float Beta;
+float ParticleScale;
+
+Buffer<float2> WaveParticlePos;
+RWTexture2D<uint> VectorField;
+
+
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, 1)]
+void ComputeFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    uint index = DispatchThreadID.y * ThreadWidth + DispatchThreadID.x;
+    uint ParticleIndex = index / (ParticleWidth * ParticleHeight);
+    float2 StartPostion = WaveParticlePos[ParticleIndex] - float2(ParticleSize * 0.5f, ParticleSize * 0.5f);
+    
+    uint2 StartPositionIndex_Field = ceil(StartPostion / VectorFieldDensity);
+    float2 RealStartPostion_Quad = StartPositionIndex_Field * VectorFieldDensity;
+    
+    
+    uint CurLoopIndex = index - ParticleIndex * ParticleWidth * ParticleHeight;
+    uint y = CurLoopIndex / ParticleWidth;
+    uint x = CurLoopIndex - ParticleWidth * y; 
+    
+    
+    float2 CurPosition = RealStartPostion_Quad + VectorFieldDensity * float2(x, y);
+    float2 offset = WaveParticlePos[ParticleIndex] - CurPosition;
+    float len = length(offset);
+    float2 normalizeDir = len > 1e-8 ? normalize(offset) : float2(0.f, 0.f);
+    float lerpFactor = ParticleSize * 0.5f < len ? 0.f : 1.f;
+    
+    float2 xyValue = normalizeDir * Beta * sin(len / ParticleScale) * lerpFactor;
+    float z = 0.5f * (cos(len / ParticleScale) + 1.f) * lerpFactor;
+
+    uint2 VectorFieldSize;
+    VectorField.GetDimensions(VectorFieldSize.x, VectorFieldSize.y);
+    
+    //&(VectorFieldSize - 1)
+    uint2 GridIndex = uint2((StartPositionIndex_Field.x + x) % VectorFieldSize.x, (StartPositionIndex_Field.y + y) % VectorFieldSize.y) * 3;
+    
+    //test
+    GridIndex = GridIndex + uint2(2, 0);
+    uint Z = ceil(z * 65535);
+    
+    InterlockedAdd(VectorField[GridIndex], Z);
+}

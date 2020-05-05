@@ -4,29 +4,15 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "WaveParticleCS.h"
 #include "AParticleWaveManager.generated.h"
+
 
 class UProceduralMeshComponent;
 class AWaveParticleTile;
 class UMaterialInterface;
+class UTextureRenderTarget;
 struct FUpdateTextureRegion2D;
-
-struct FWaveParticle {
-	FWaveParticle(const FVector2D& position, const FVector2D& Speed)
-		: Position(position), Speed(Speed)
-	{
-
-	}
-
-
-	FVector2D Position;
-	FVector2D Speed;
-
-	//粒子通用属性
-	static float Size;
-	static uint32 width;
-	static uint32 height;
-};
 
 
 UCLASS()
@@ -53,6 +39,9 @@ public:
 	void InitWaveParticle();
 
 	void ClearResource();
+
+	//GPU Version 
+	void UpdateParticle_GPU(float DeltaTime);
 
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
@@ -113,15 +102,19 @@ public:
 	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
 		UStaticMesh* WaterMesh;
 
-private:
-	TArray<FWaveParticle> ParticleContainer;
+	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
+		UTextureRenderTarget* ParticleVectorFieldRenderTarget;
 
+	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
+		UTextureRenderTarget* ParticleNormalRenderTarget;
+
+private:
+	
 	TSharedPtr<FUpdateTextureRegion2D> UpdateTextureRegion2D;
 
 	float VectorFieldDensityX;
 
 	float VectorFieldDensityY;
-
 
 	//#TODO use R11G11B10 format
 	TArray<float> VectorField[2];
@@ -136,8 +129,19 @@ private:
 
 	uint32 CurFrame;
 
+
+//GPU Resource
+private:
+
+	//所以Actor也是一样，里面拥有fence，在destroy前fence都不会执行完毕
+	//但Actor很有可能不会被销毁，仅仅是想重新初始化，所以使用SharedPtr
+	TSharedPtr<TArray<FVector2D>,ESPMode::ThreadSafe>  ParticlePosContainer;
+	TSharedPtr<TArray<FVector2D>, ESPMode::ThreadSafe> ParticleSpeedContainer;
+	TSharedPtr<FWaveParticle_GPU, ESPMode::ThreadSafe> WaveParticleGPU;
+
 public:
 	const static FVector2D UVScale1;
 	const static FVector2D UVScale2;
 	const static FVector2D UVScale3;
 };
+

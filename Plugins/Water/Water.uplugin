@@ -15,11 +15,11 @@
 	"IsExperimentalVersion": false,
 	"Installed": false,
 	"Modules": [
-		{
-			"Name": "Water",
-			"Type": "Runtime",
-			"LoadingPhase": "Default"
-		}
+    {
+      "Name": "Water",
+      "Type": "Runtime",
+      "LoadingPhase": "PostConfigInit"
+    }
 	],
 
 	"Plugins": [

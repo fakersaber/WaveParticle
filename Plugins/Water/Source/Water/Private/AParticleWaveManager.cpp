@@ -9,6 +9,12 @@
 #include "PhysicsEngine/BodySetup.h"
 #include "WaveParticleTile.h"
 #include "RHI.h"
+#include "Engine/Engine.h"
+#include "Engine/TextureRenderTarget.h"
+
+
+#define CPU_PARTICLE_VERSION 0
+
 
 static const float Y_PI = 3.1415926535897932f;
 const FVector2D AParticleWaveManager::UVScale1 = FVector2D(0.125f,0.125f);
@@ -43,6 +49,7 @@ AParticleWaveManager::AParticleWaveManager()
 	CurFrame = 0;
 
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("ManagerRootComponent"));
+
 }
 
 // Called when the game starts or when spawned
@@ -52,45 +59,60 @@ void AParticleWaveManager::BeginPlay()
 }
 
 // Called every frame
-void AParticleWaveManager::Tick(float DeltaTime)
-{
+void AParticleWaveManager::Tick(float DeltaTime){
 	Super::Tick(DeltaTime);
 
 	if (WaveClassType && WaterMaterial && WaterMesh) {
 		if (!bHasInit) {
 			ClearResource();
-
 			InitWaveParticle();
 			bHasInit = true;
 		}
-
+#if CPU_PARTICLE_VERSION
 		UpdateParticle(DeltaTime);
+#else
+		UpdateParticle_GPU(DeltaTime);
+#endif
 	}
 }
 
 void AParticleWaveManager::ClearResource() {
+#if !CPU_PARTICLE_VERSION
+	//GPU Resource
+	{
+		//GPU资源的释放全部放在渲染线程,RemoveAll后GPU资源释放掉
+		//即使不调用Remove，BoardCast依然会释放delegate中无效的的invoke
+		ENQUEUE_RENDER_COMMAND(FReleaseWaveParticleResource)([this](FRHICommandListImmediate& RHICmdList) {
+			UE_LOG(LogTemp, Log, TEXT("Destroy Delegate"));
+			GEngine->PreRenderDelegate.RemoveAll(this);
+		});
+		WaveParticleGPU.Reset();
+	}
+#endif
 
-	ParticleContainer.Reset();
 
+#if CPU_PARTICLE_VERSION
 	UpdateTextureRegion2D.Reset();
+#endif
 
 	//#TODO 只有当改变与mesh相关参数才重新生成TileActor
 	for (auto TileActor : WaveParticleTileContainer) {
 		TileActor->Destroy();
 	}
-
 	WaveParticleTileContainer.Reset();
+	ParticlePosContainer.Reset();
+	ParticleSpeedContainer.Reset();
 }
+
 void AParticleWaveManager::Destroyed() {
-
-	for (auto TileActor : WaveParticleTileContainer) {
-		TileActor->Destroy();
-	}
-
+	ClearResource();
 	Super::Destroyed();
 }
 
 void AParticleWaveManager::InitWaveParticle() {
+	
+	ParticlePosContainer = MakeShared<TArray<FVector2D>, ESPMode::ThreadSafe>();
+	ParticleSpeedContainer = MakeShared<TArray<FVector2D>, ESPMode::ThreadSafe>();
 
 	for (int i = 0; i < UE_ARRAY_COUNT(VectorField); ++i) {
 		VectorField[i].SetNumZeroed(VectorFieldSize.X * VectorFieldSize.Y * 4);
@@ -108,6 +130,7 @@ void AParticleWaveManager::InitWaveParticle() {
 	FWaveParticle::width = FMath::CeilToInt(FWaveParticle::Size / VectorFieldDensityX);
 	FWaveParticle::height = FMath::CeilToInt(FWaveParticle::Size / VectorFieldDensityY);
 
+
 	//init particle position and speed
 	{
 		//分段函数,速度转换的线性函数[0,0.5) 为负，[0.5,1]为正
@@ -117,6 +140,8 @@ void AParticleWaveManager::InitWaveParticle() {
 		for (int i = 0; i < ParticleNum; ++i) {
 			//保证最小移动距离
 			FVector2D Position(FMath::Rand() % PlaneSize.X, FMath::Rand() % PlaneSize.Y);
+			ParticlePosContainer->Emplace(Position);
+
 			auto RandomSpeedX = FMath::FRand() * 2.f - 1.f;
 			auto RandomSpeedY = FMath::FRand() * 2.f - 1.f;
 			auto Sign_X = FMath::Sign(RandomSpeedX);
@@ -124,10 +149,11 @@ void AParticleWaveManager::InitWaveParticle() {
 			RandomSpeedX = Sign_Y < 0 ? RandomSpeedX * SpeedK - MinParticleSpeed : RandomSpeedX * SpeedK + MinParticleSpeed;
 			RandomSpeedY = Sign_Y < 0 ? RandomSpeedY * SpeedK - MinParticleSpeed : RandomSpeedY * SpeedK + MinParticleSpeed;
 			FVector2D Speed(RandomSpeedX, RandomSpeedY);
-			ParticleContainer.Emplace(Position, Speed);
+			ParticleSpeedContainer->Emplace(Speed);
 		}
 	}
 
+#if CPU_PARTICLE_VERSION
 	//Init Texture Resources
 	{
 		VectorFieldTex = UTexture2D::CreateTransient(VectorFieldSize.X, VectorFieldSize.Y, PF_A32B32G32R32F);
@@ -135,17 +161,26 @@ void AParticleWaveManager::InitWaveParticle() {
 		VectorFieldTex->AddressX = TA_Wrap;
 		VectorFieldTex->AddressY = TA_Wrap;
 		VectorFieldTex->UpdateResource();
-
 		NormalMapTex = UTexture2D::CreateTransient(VectorFieldSize.X, VectorFieldSize.Y, PF_A32B32G32R32F);
 		NormalMapTex->Filter = TF_Bilinear;
 		NormalMapTex->AddressX = TA_Wrap;
 		NormalMapTex->AddressY = TA_Wrap;
 		NormalMapTex->UpdateResource();
-
-		
 		UpdateTextureRegion2D = MakeShared<FUpdateTextureRegion2D>(0, 0, 0, 0, VectorFieldSize.X, VectorFieldSize.Y);
 	}
+#endif
 
+
+#if !CPU_PARTICLE_VERSION
+	//复制资源引用
+	WaveParticleGPU = MakeShared<FWaveParticle_GPU, ESPMode::ThreadSafe>(ParticlePosContainer,ParticleSpeedContainer);
+	TSharedPtr<FWaveParticle_GPU, ESPMode::ThreadSafe> WaveParticleShared(WaveParticleGPU);
+
+	ENQUEUE_RENDER_COMMAND(FComputeWaveParticle)([WaveParticleShared](FRHICommandListImmediate& RHICmdList) {
+		WaveParticleShared->InitWaveParticlePosResource();
+	});
+
+#endif
 
 	//Spawn Actor
 	{ 
@@ -160,11 +195,15 @@ void AParticleWaveManager::InitWaveParticle() {
 
 				FVector PositionOffset(FVector2D(x * TileMeshSize.X + HalfTileMeshSize.X, y * TileMeshSize.Y + HalfTileMeshSize.Y) - Center, 0.f);
 				auto NewActor = GetWorld()->SpawnActor<AWaveParticleTile>(WaveClassType, GetActorLocation() + PositionOffset, GetActorRotation());
-				NewActor->GeneratorStaticMesh(WaterMesh);
+				//staic mesh version
+				//NewActor->GeneratorStaticMesh(WaterMesh);
+				//UStaticMeshComponent* MeshComponent = NewActor->FindComponentByClass<UStaticMeshComponent>();
 
-				//NewActor->GeneratorWaveMesh(GridSize, PlaneSize);
+				//Procudual Mesh version
+				NewActor->GeneratorWaveMesh(GridSize, PlaneSize);
+				UProceduralMeshComponent* MeshComponent = NewActor->FindComponentByClass<UProceduralMeshComponent>();
 
-				UStaticMeshComponent* MeshComponent = NewActor->FindComponentByClass<UStaticMeshComponent>();
+
 				UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, WaterMaterial);
 				DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
 				DynamicMaterialInstance->SetTextureParameterValue("FieldNormal", NormalMapTex);
@@ -193,14 +232,33 @@ void AParticleWaveManager::InitWaveParticle() {
 				NewActor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
 			}
 		}
-
 	}
-
 	//单位VectorField表示的虚幻长度
 	TILE_SIZE_X2 = 2.f * PlaneSize.X * GridSize / 100.f / VectorFieldSize.X;
 
 }
 
+void AParticleWaveManager::UpdateParticle_GPU(float DeltaTime) {
+
+ 	TSharedPtr<FWaveParticle_GPU, ESPMode::ThreadSafe> WaveParticleShared(WaveParticleGPU);
+	UWorld* World = GetWorld();
+	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
+	float ParticleTickTime = World->TimeSeconds;
+	ENQUEUE_RENDER_COMMAND(FWaveParticleBind)([this, FeatureLevel, WaveParticleShared, ParticleTickTime](FRHICommandListImmediate& RHICmdList) {
+		if (!GEngine->PreRenderDelegate.IsBoundToObject(this))
+		{
+			//UE_LOG(LogTemp, Log, TEXT("BindThis"));
+			GEngine->PreRenderDelegate.AddWeakLambda(this, [FeatureLevel, WaveParticleShared, ParticleTickTime,this]() {
+				if (ParticleVectorFieldRenderTarget) {
+					FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
+					WaveParticleShared->UpdateWaveParticlePos(ParticleTickTime);
+					WaveParticleShared->UpdateWaveParticleFiled(RHICmdList,ParticleVectorFieldRenderTarget->GetRenderTargetResource(), FeatureLevel);
+				}
+			});
+		}
+	});
+
+}
 
 void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 
@@ -213,10 +271,10 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 
 	for (uint32 i = 0; i < ParticleNum; i++) {
 
-		ParticleContainer[i].Position += ParticleContainer[i].Speed * DeltaTime;
+		(*ParticlePosContainer)[i] += (*ParticleSpeedContainer)[i] * DeltaTime;
 
 		//理论边缘值
-		FVector2D StartPosition = ParticleContainer[i].Position - FWaveParticle::Size * 0.5f;
+		FVector2D StartPosition = (*ParticlePosContainer)[i] - FWaveParticle::Size * 0.5f;
 
 		//对应边缘quad的向量场坐标
 		FIntPoint StartPositionIndex(
@@ -232,7 +290,7 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 			for (uint32 x = 0; x < FWaveParticle::width; x++) {
 
 				FVector2D CurPosition(RealStartPosition.X + x * VectorFieldDensityX, RealStartPosition.Y + y * VectorFieldDensityY);
-				FVector2D offset(ParticleContainer[i].Position - CurPosition);
+				FVector2D offset((*ParticlePosContainer)[i] - CurPosition);
 				FVector2D Direction;
 				float length = 1.f;
 				offset.ToDirectionAndLength(Direction, length);
@@ -338,66 +396,3 @@ void AParticleWaveManager::PostEditChangeProperty(FPropertyChangedEvent& Propert
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 #endif
-
-//for (int i = 0; i < ParticleNum; ++i) {
-
-//	float halfPaticleQuadSize = ParticleSize * 0.5f;
-
-//	//转换到向量场单位，四舍五入
-//	int halfParticleFieldSize_X = FMath::CeilToInt(halfPaticleQuadSize / VectorFieldDensityX);
-//	int halfParticleFieldSize_Y = FMath::CeilToInt(halfPaticleQuadSize / VectorFieldDensityY);
-
-//	//转换Position,为向量场单位，直接截取到整数
-//	FIntPoint CurParticleVectorFieldPos(
-//		ParticleContainer[i].Position.X / VectorFieldDensityX,
-//		ParticleContainer[i].Position.Y / VectorFieldDensityY
-//	);
-
-//	int StartFieldIndex_X = FMath::Max(CurParticleVectorFieldPos.X - halfParticleFieldSize_X, 0);
-//	int EndFieldIndex_X = FMath::Min(CurParticleVectorFieldPos.X + halfParticleFieldSize_X, VectorFieldSize.X - 1);
-//	int StartFieldIndex_Y = FMath::Max(CurParticleVectorFieldPos.Y - halfParticleFieldSize_Y, 0);
-//	int EndFieldIndex_Y = FMath::Min(CurParticleVectorFieldPos.Y + halfParticleFieldSize_Y, VectorFieldSize.Y - 1);
-
-//	//注意这个k换算的是向量场 hlsl rsqrt
-//	float k_x = Y_PI / halfParticleFieldSize_X;
-//	float k_y = Y_PI / halfParticleFieldSize_Y;
-//	float k_z = Y_PI * FMath::InvSqrt(static_cast<float>(halfParticleFieldSize_X * halfParticleFieldSize_X + halfParticleFieldSize_Y * halfParticleFieldSize_Y));
-
-//	for (int FieldIndex_X = StartFieldIndex_X; FieldIndex_X <= EndFieldIndex_X; ++FieldIndex_X) {
-//		for (int FieldIndex_Y = StartFieldIndex_Y; FieldIndex_Y <= EndFieldIndex_Y; ++FieldIndex_Y) {
-
-//			FIntPoint offset(FieldIndex_X - CurParticleVectorFieldPos.X, FieldIndex_Y - CurParticleVectorFieldPos.Y);
-
-//			float CurSize = FMath::Sqrt(offset.X * offset.X + offset.Y * offset.Y);
-//			float t_x = FMath::Clamp(-offset.X * k_x, -Y_PI, Y_PI);
-//			float t_y = FMath::Clamp(-offset.Y * k_y, -Y_PI, Y_PI); ;
-//			float t_z = FMath::Clamp(CurSize * k_z, 0.f, Y_PI);
-//			
-//			int Index = (FieldIndex_Y * VectorFieldSize.X + FieldIndex_X) * 4;
-
-//			VectorField[Index] += (t_x - Beta * FMath::Sin(t_x)) / Y_PI ;
-//			VectorField[Index + 1] += (t_y - Beta * FMath::Sin(t_y)) / Y_PI;
-//			VectorField[Index + 2] += 0.5f * (FMath::Cos(t_z) + 1.f);
-//			VectorField[Index + 3] = 0.f;
-//		}
-//	}
-
-//	//更新粒子位置,移动单位为Field，但Position单位为quad
-//	float NewPosition_X = ParticleContainer[i].Position.X + DeltaTime * ParticleContainer[i].Speed.X * VectorFieldDensityX;
-//	float NewPosition_Y = ParticleContainer[i].Position.Y + DeltaTime * ParticleContainer[i].Speed.Y * VectorFieldDensityY;
-
-//	//边界值
-//	float LeftStart_X = -halfPaticleQuadSize;
-//	float RightStart_X = halfPaticleQuadSize + PlaneSize.X;
-//	float TopStart_Y = -halfPaticleQuadSize;
-//	float DownStart_Y = halfPaticleQuadSize + PlaneSize.Y;
-
-//	//为了gpu加速
-//	NewPosition_X = NewPosition_X < LeftStart_X ? RightStart_X : NewPosition_X;
-//	NewPosition_X = NewPosition_X > RightStart_X ? LeftStart_X : NewPosition_X;
-//	NewPosition_Y = NewPosition_Y < TopStart_Y ? DownStart_Y : NewPosition_Y;
-//	NewPosition_Y = NewPosition_Y > DownStart_Y ? TopStart_Y : NewPosition_Y;
-
-//	ParticleContainer[i].Position.X = NewPosition_X;
-//	ParticleContainer[i].Position.Y = NewPosition_Y;
-//}
