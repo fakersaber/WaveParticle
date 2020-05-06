@@ -17,10 +17,10 @@
 
 
 static const float Y_PI = 3.1415926535897932f;
-const FVector2D AParticleWaveManager::UVScale1 = FVector2D(0.125f,0.125f);
+const FVector2D AParticleWaveManager::UVScale1 = FVector2D(0.125f, 0.125f);
 const FVector2D AParticleWaveManager::UVScale2 = FVector2D(0.25f, 0.25f);
 const FVector2D AParticleWaveManager::UVScale3 = FVector2D(0.5f, 0.5f);
-
+FUpdateFieldStruct AParticleWaveManager::UpdateParticleData;
 
 float FWaveParticle::Size = 0.f;
 uint32 FWaveParticle::width = 0;
@@ -59,7 +59,7 @@ void AParticleWaveManager::BeginPlay()
 }
 
 // Called every frame
-void AParticleWaveManager::Tick(float DeltaTime){
+void AParticleWaveManager::Tick(float DeltaTime) {
 	Super::Tick(DeltaTime);
 
 	if (WaveClassType && WaterMaterial && WaterMesh) {
@@ -85,7 +85,7 @@ void AParticleWaveManager::ClearResource() {
 		ENQUEUE_RENDER_COMMAND(FReleaseWaveParticleResource)([this](FRHICommandListImmediate& RHICmdList) {
 			UE_LOG(LogTemp, Log, TEXT("Destroy Delegate"));
 			GEngine->PreRenderDelegate.RemoveAll(this);
-		});
+			});
 		WaveParticleGPU.Reset();
 	}
 #endif
@@ -110,7 +110,7 @@ void AParticleWaveManager::Destroyed() {
 }
 
 void AParticleWaveManager::InitWaveParticle() {
-	
+
 	ParticlePosContainer = MakeShared<TArray<FVector2D>, ESPMode::ThreadSafe>();
 	ParticleSpeedContainer = MakeShared<TArray<FVector2D>, ESPMode::ThreadSafe>();
 
@@ -130,6 +130,16 @@ void AParticleWaveManager::InitWaveParticle() {
 	FWaveParticle::width = FMath::CeilToInt(FWaveParticle::Size / VectorFieldDensityX);
 	FWaveParticle::height = FMath::CeilToInt(FWaveParticle::Size / VectorFieldDensityY);
 
+	AParticleWaveManager::UpdateParticleData.InThreadSize = FIntPoint(
+		FMath::CeilToInt(FMath::Sqrt(ParticleNum)) * FWaveParticle::width,
+		FMath::CeilToInt(FMath::Sqrt(ParticleNum)) * FWaveParticle::height
+	);
+
+	AParticleWaveManager::UpdateParticleData.InParticleQuadSize = FIntPoint(FWaveParticle::width, FWaveParticle::height);
+	AParticleWaveManager::UpdateParticleData.InVectorFieldDensity = FVector2D(VectorFieldDensityX, VectorFieldDensityY);
+	AParticleWaveManager::UpdateParticleData.InParticleSize = FWaveParticle::Size;
+	AParticleWaveManager::UpdateParticleData.InBeta = Beta;
+	AParticleWaveManager::UpdateParticleData.InParticleScale = ParticleScale;
 
 	//init particle position and speed
 	{
@@ -172,18 +182,18 @@ void AParticleWaveManager::InitWaveParticle() {
 
 
 #if !CPU_PARTICLE_VERSION
-	//复制资源引用
-	WaveParticleGPU = MakeShared<FWaveParticle_GPU, ESPMode::ThreadSafe>(ParticlePosContainer,ParticleSpeedContainer);
+	//复制资源引用,不需要复制
+	WaveParticleGPU = MakeShared<FWaveParticle_GPU, ESPMode::ThreadSafe>(ParticlePosContainer, ParticleSpeedContainer);
 	TSharedPtr<FWaveParticle_GPU, ESPMode::ThreadSafe> WaveParticleShared(WaveParticleGPU);
-
-	ENQUEUE_RENDER_COMMAND(FComputeWaveParticle)([WaveParticleShared](FRHICommandListImmediate& RHICmdList) {
-		WaveParticleShared->InitWaveParticlePosResource();
-	});
+	FIntPoint FieldSize(VectorFieldSize);
+	ENQUEUE_RENDER_COMMAND(FComputeWaveParticle)([WaveParticleShared, FieldSize](FRHICommandListImmediate& RHICmdList) {
+		WaveParticleShared->InitWaveParticlePosResource(FieldSize);
+		});
 
 #endif
 
 	//Spawn Actor
-	{ 
+	{
 		FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
 
 		FVector2D HalfTileMeshSize(TileMeshSize * 0.5f);
@@ -207,7 +217,7 @@ void AParticleWaveManager::InitWaveParticle() {
 				UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, WaterMaterial);
 				DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
 				DynamicMaterialInstance->SetTextureParameterValue("FieldNormal", NormalMapTex);
-				
+
 				//2^-1 2^-2 2^-3 均可以精确表示
 				float EdgeValueX1 = FMath::Frac(AParticleWaveManager::UVScale1.X * x);
 				float EdgeValueY1 = FMath::Frac(AParticleWaveManager::UVScale1.Y * y);
@@ -240,20 +250,27 @@ void AParticleWaveManager::InitWaveParticle() {
 
 void AParticleWaveManager::UpdateParticle_GPU(float DeltaTime) {
 
- 	TSharedPtr<FWaveParticle_GPU, ESPMode::ThreadSafe> WaveParticleShared(WaveParticleGPU);
+	TSharedPtr<FWaveParticle_GPU, ESPMode::ThreadSafe> WaveParticleShared(WaveParticleGPU);
 	UWorld* World = GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
 	float ParticleTickTime = World->TimeSeconds;
-	ENQUEUE_RENDER_COMMAND(FWaveParticleBind)([this, FeatureLevel, WaveParticleShared, ParticleTickTime](FRHICommandListImmediate& RHICmdList) {
+
+	//保证一次数据的完整性
+	FUpdateFieldStruct TempRenderData;
+	FMemory::Memcpy(&TempRenderData, &AParticleWaveManager::UpdateParticleData, sizeof(FUpdateFieldStruct));
+
+	ENQUEUE_RENDER_COMMAND(FWaveParticleBind)([this, FeatureLevel, WaveParticleShared, ParticleTickTime, TempRenderData](FRHICommandListImmediate& RHICmdList) {
 		if (!GEngine->PreRenderDelegate.IsBoundToObject(this))
 		{
 			//UE_LOG(LogTemp, Log, TEXT("BindThis"));
-			GEngine->PreRenderDelegate.AddWeakLambda(this, [FeatureLevel, WaveParticleShared, ParticleTickTime,this]() {
-				if (ParticleVectorFieldRenderTarget) {
-					FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
-					WaveParticleShared->UpdateWaveParticlePos(ParticleTickTime);
-					WaveParticleShared->UpdateWaveParticleFiled(RHICmdList,ParticleVectorFieldRenderTarget->GetRenderTargetResource(), FeatureLevel);
-				}
+			GEngine->PreRenderDelegate.AddWeakLambda(this, [FeatureLevel, WaveParticleShared, ParticleTickTime, this, TempRenderData]() {
+				FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
+				WaveParticleShared->UpdateWaveParticlePos(ParticleTickTime);
+				WaveParticleShared->UpdateWaveParticleFiled(
+					RHICmdList,
+					TempRenderData,
+					FeatureLevel
+				);
 			});
 		}
 	});
@@ -313,7 +330,7 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 	{
 		for (int32 y = 0; y < VectorFieldSize.Y; ++y) {
 			for (int32 x = 0; x < VectorFieldSize.X; ++x) {
-				
+
 				uint32 LeftIndex = (x - 1) & (VectorFieldSize.X - 1);
 				uint32 RightIndex = (x + 1) & (VectorFieldSize.X - 1);
 
@@ -325,7 +342,7 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 
 				float TopZ = CurFrameVectorField[(TopIndex * VectorFieldSize.Y + x) * 4 + 2];
 				float DownZ = CurFrameVectorField[(DownIndex * VectorFieldSize.Y + x) * 4 + 2];
-				
+
 				//gradient
 				int32 PlacementIndex = (y * VectorFieldSize.X + x) * 4;
 				CurFrameNormal[PlacementIndex] = leftZ - RightZ;
@@ -358,13 +375,13 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 }
 
 #if WITH_EDITOR
-static FName Name_PlaneSize = GET_MEMBER_NAME_CHECKED( AParticleWaveManager, PlaneSize);
-static FName Name_VectorFieldSize = GET_MEMBER_NAME_CHECKED( AParticleWaveManager, VectorFieldSize);
-static FName Name_MaxParticleSpeed = GET_MEMBER_NAME_CHECKED( AParticleWaveManager, MaxParticleSpeed);
-static FName Name_MinParticleSpeed = GET_MEMBER_NAME_CHECKED( AParticleWaveManager, MinParticleSpeed);
-static FName Name_ParticleNum = GET_MEMBER_NAME_CHECKED( AParticleWaveManager, ParticleNum);
-static FName Name_ParticleSize = GET_MEMBER_NAME_CHECKED( AParticleWaveManager, ParticleScale);
-static FName Name_Beta = GET_MEMBER_NAME_CHECKED( AParticleWaveManager, Beta);
+static FName Name_PlaneSize = GET_MEMBER_NAME_CHECKED(AParticleWaveManager, PlaneSize);
+static FName Name_VectorFieldSize = GET_MEMBER_NAME_CHECKED(AParticleWaveManager, VectorFieldSize);
+static FName Name_MaxParticleSpeed = GET_MEMBER_NAME_CHECKED(AParticleWaveManager, MaxParticleSpeed);
+static FName Name_MinParticleSpeed = GET_MEMBER_NAME_CHECKED(AParticleWaveManager, MinParticleSpeed);
+static FName Name_ParticleNum = GET_MEMBER_NAME_CHECKED(AParticleWaveManager, ParticleNum);
+static FName Name_ParticleSize = GET_MEMBER_NAME_CHECKED(AParticleWaveManager, ParticleScale);
+static FName Name_Beta = GET_MEMBER_NAME_CHECKED(AParticleWaveManager, Beta);
 static FName Name_GridSize = GET_MEMBER_NAME_CHECKED(AParticleWaveManager, GridSize);
 static FName Name_TileSize = GET_MEMBER_NAME_CHECKED(AParticleWaveManager, TileSize);
 static FName Name_Material = GET_MEMBER_NAME_CHECKED(AParticleWaveManager, WaterMaterial);

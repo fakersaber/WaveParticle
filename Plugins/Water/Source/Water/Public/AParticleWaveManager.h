@@ -12,8 +12,8 @@ class UProceduralMeshComponent;
 class AWaveParticleTile;
 class UMaterialInterface;
 class UTextureRenderTarget;
-struct FUpdateTextureRegion2D;
 
+struct FUpdateTextureRegion2D;
 
 UCLASS()
 class WATER_API AParticleWaveManager : public AActor
@@ -137,11 +137,14 @@ private:
 	//但Actor很有可能不会被销毁，仅仅是想重新初始化，所以使用SharedPtr
 	TSharedPtr<TArray<FVector2D>,ESPMode::ThreadSafe>  ParticlePosContainer;
 	TSharedPtr<TArray<FVector2D>, ESPMode::ThreadSafe> ParticleSpeedContainer;
+
+
 	TSharedPtr<FWaveParticle_GPU, ESPMode::ThreadSafe> WaveParticleGPU;
 
 public:
 	const static FVector2D UVScale1;
 	const static FVector2D UVScale2;
 	const static FVector2D UVScale3;
+	static FUpdateFieldStruct UpdateParticleData;
 };
 

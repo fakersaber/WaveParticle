@@ -14,6 +14,17 @@ struct FWaveParticle {
 	static uint32 height;
 };
 
+
+struct FUpdateFieldStruct {
+	FIntPoint InThreadSize;
+	FIntPoint InParticleQuadSize;
+	FVector2D InVectorFieldDensity;
+	float InParticleSize;
+	float InBeta;
+	float InParticleScale;
+};
+
+
 //only render thread
 class FWaveParticle_GPU {
 public:
@@ -31,14 +42,16 @@ public:
 
 	void UpdateWaveParticleFiled(
 		FRHICommandListImmediate& RHICmdList,
-		FTextureRenderTargetResource* Filed_RT,
+		const FUpdateFieldStruct& StructData,
 		ERHIFeatureLevel::Type FeatureLevel
 	);
 
-	void InitWaveParticlePosResource();
+	void InitWaveParticlePosResource(const FIntPoint& FieldSize);
 private:
 
 	TSharedPtr<TArray<FVector2D>, ESPMode::ThreadSafe> SharedParticlePos;
 	TSharedPtr<TArray<FVector2D>, ESPMode::ThreadSafe> SharedParticleSpeed;
+
 	FReadBuffer* WaveParticlePosBuffer;
+	FTextureRWBuffer2D* WaveParticleFieldBuffer;
 };

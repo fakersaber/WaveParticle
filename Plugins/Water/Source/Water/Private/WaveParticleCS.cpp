@@ -4,6 +4,7 @@
 #include "TextureResource.h"
 #include "RHICommandList.h"
 #include "RHIUtilities.h"
+#include "RHIDefinitions.h"
 
 #define WAVE_GROUP_THREAD_COUNTS 8
 
@@ -17,7 +18,15 @@ public:
 	FWaveParticlePlacementCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
 		FGlobalShader(Initializer)
 	{
-		WaveParticlePos_SRV.Bind(Initializer.ParameterMap, TEXT("RWWaveParticlePos"));
+		ThreadWidth.Bind(Initializer.ParameterMap, TEXT("ThreadWidth"));
+		ParticleWidth.Bind(Initializer.ParameterMap, TEXT("ParticleWidth"));
+		ParticleHeight.Bind(Initializer.ParameterMap, TEXT("ParticleHeight"));
+		VectorFieldDensity.Bind(Initializer.ParameterMap, TEXT("VectorFieldDensity"));
+		ParticleSize.Bind(Initializer.ParameterMap, TEXT("ParticleSize"));
+		Beta.Bind(Initializer.ParameterMap, TEXT("Beta"));
+		ParticleScale.Bind(Initializer.ParameterMap, TEXT("ParticleScale"));
+		WaveParticlePos_SRV.Bind(Initializer.ParameterMap, TEXT("WaveParticlePos"));
+		WaveParticleField_UAV.Bind(Initializer.ParameterMap, TEXT("VectorField"));
 	}
 
 	static bool ShouldCache(EShaderPlatform Platform)
@@ -38,23 +47,18 @@ public:
 
 	void SetParameters(
 		FRHICommandListImmediate& RHICmdList,
-		uint32 InThreadWidth,
-		FIntPoint InPariticleSize,
-		FVector2D InVectorFieldDensity,
-		float InParticleSize,
-		float InBeta,
-		float InParticleScale,
+		const FUpdateFieldStruct& StructData,
 		FRHIShaderResourceView* InWaveParticlePos_SRV,
 		FRHIUnorderedAccessView* InWaveParticleField_UAV
 	)
 	{
-		SetShaderValue(RHICmdList, GetComputeShader(), ThreadWidth, InThreadWidth);
-		SetShaderValue(RHICmdList, GetComputeShader(), ParticleWidth, InPariticleSize.X);
-		SetShaderValue(RHICmdList, GetComputeShader(), ParticleHeight, InPariticleSize.Y);
-		SetShaderValue(RHICmdList, GetComputeShader(), VectorFieldDensity, InVectorFieldDensity);
-		SetShaderValue(RHICmdList, GetComputeShader(), ParticleSize, InPariticleSize);
-		SetShaderValue(RHICmdList, GetComputeShader(), Beta, InBeta);
-		SetShaderValue(RHICmdList, GetComputeShader(), ParticleScale, InParticleScale);
+		SetShaderValue(RHICmdList, GetComputeShader(), ThreadWidth, StructData.InThreadSize.X);
+		SetShaderValue(RHICmdList, GetComputeShader(), ParticleWidth, StructData.InParticleQuadSize.X);
+		SetShaderValue(RHICmdList, GetComputeShader(), ParticleHeight, StructData.InParticleQuadSize.Y);
+		SetShaderValue(RHICmdList, GetComputeShader(), VectorFieldDensity, StructData.InVectorFieldDensity);
+		SetShaderValue(RHICmdList, GetComputeShader(), ParticleSize, StructData.InParticleSize);
+		SetShaderValue(RHICmdList, GetComputeShader(), Beta, StructData.InBeta);
+		SetShaderValue(RHICmdList, GetComputeShader(), ParticleScale, StructData.InParticleScale);
 
 		SetSRVParameter(RHICmdList, GetComputeShader(), WaveParticlePos_SRV, InWaveParticlePos_SRV);
 		if (WaveParticleField_UAV.IsBound()) {
@@ -90,7 +94,6 @@ public:
 private:
 
 	FShaderParameter ThreadWidth;
-
 	FShaderParameter ParticleWidth;
 	FShaderParameter ParticleHeight;
 	FShaderParameter VectorFieldDensity;
@@ -114,12 +117,16 @@ FWaveParticle_GPU::FWaveParticle_GPU(
 	SharedParticleSpeed(SharedParticleSpeed)
 {
 	WaveParticlePosBuffer = new FReadBuffer();
+	WaveParticleFieldBuffer = new FTextureRWBuffer2D();
 }
 
 
 FWaveParticle_GPU::~FWaveParticle_GPU() {
 	delete WaveParticlePosBuffer;
+	delete WaveParticleFieldBuffer;
+
 	WaveParticlePosBuffer = nullptr;
+	WaveParticleFieldBuffer = nullptr;
 }
 
 void FWaveParticle_GPU::UpdateWaveParticlePos(float ParticleTickTime)
@@ -130,27 +137,16 @@ void FWaveParticle_GPU::UpdateWaveParticlePos(float ParticleTickTime)
 	void* ParticlePosData = RHILockVertexBuffer(WaveParticlePosBuffer->Buffer, 0, SharedParticlePos->Num() * sizeof(FVector2D), RLM_WriteOnly);
 	FMemory::Memcpy(ParticlePosData, SharedParticlePos->GetData(), SharedParticlePos->Num() * sizeof(FVector2D));
 	RHIUnlockVertexBuffer(WaveParticlePosBuffer->Buffer);
-
-	//RHICmdList.BeginComputePass(TEXT("WaveParticlePos"));
-	//TShaderMapRef<FWaveParticlePosCS> WaveParticlePosShader(GetGlobalShaderMap(FeatureLevel));
-	//RHICmdList.SetComputeShader(WaveParticlePosShader->GetComputeShader());
-	////PhillipsSpecturmShader->SetParameters(RHICmdList, WaveSize, GridLength, WaveAmplitude, WindSpeed, RandomTableSRV, Spectrum, SpectrumConj);
-	////DispatchComputeShader(RHICmdList, *WaveParticlePosShader, FMath::DivideAndRoundUp(WaveSize + 1, WAVE_GROUP_THREAD_COUNTS), FMath::DivideAndRoundUp(WaveSize + 1, WAVE_GROUP_THREAD_COUNTS), 1);
-	////PhillipsSpecturmShader->UnbindUAV(RHICmdList);
-	//RHICmdList.EndComputePass();
 }
 
 
 void FWaveParticle_GPU::UpdateWaveParticleFiled
 (
 	FRHICommandListImmediate& RHICmdList,
-	FTextureRenderTargetResource* Filed_RT,
+	const FUpdateFieldStruct& StructData,
 	ERHIFeatureLevel::Type FeatureLevel
 ) 
 {
-	//UTexture中拥有fence，不会在渲染线程中释放
-	FRHITexture* FiledTexture_RT = Filed_RT->GetRenderTargetTexture();
-	FUnorderedAccessViewRHIRef Filed_UAV = RHICreateUnorderedAccessView(FiledTexture_RT);
 
 	RHICmdList.BeginComputePass(TEXT("ComputeField"));
 	TShaderMapRef<FWaveParticlePlacementCS> WaveParticlePlacementShader(GetGlobalShaderMap(FeatureLevel));
@@ -158,20 +154,26 @@ void FWaveParticle_GPU::UpdateWaveParticleFiled
 
 	WaveParticlePlacementShader->SetParameters(
 		RHICmdList,
+		StructData,
 		WaveParticlePosBuffer->SRV,
-		Filed_UAV
+		WaveParticleFieldBuffer->UAV
 	);
 
+	DispatchComputeShader(
+		RHICmdList,
+		*WaveParticlePlacementShader,
+		FMath::DivideAndRoundUp(StructData.InThreadSize.X, WAVE_GROUP_THREAD_COUNTS),
+		FMath::DivideAndRoundUp(StructData.InThreadSize.Y, WAVE_GROUP_THREAD_COUNTS),
+		1ul
+		);
 
+
+	WaveParticlePlacementShader->UnbindUAV(RHICmdList);
 	RHICmdList.EndComputePass();
 }
 
 
-void FWaveParticle_GPU::InitWaveParticlePosResource() {
-
-	WaveParticlePosBuffer->Initialize(sizeof(FVector2D), SharedParticlePos->Num(), EPixelFormat::PF_G32R32F, BUF_Static);
-
-	void* ParticlePosData = RHILockVertexBuffer(WaveParticlePosBuffer->Buffer, 0, SharedParticlePos->Num() * sizeof(FVector2D), RLM_WriteOnly);
-	FMemory::Memcpy(ParticlePosData, SharedParticlePos->GetData(), SharedParticlePos->Num() * sizeof(FVector2D));
-	RHIUnlockVertexBuffer(WaveParticlePosBuffer->Buffer);
+void FWaveParticle_GPU::InitWaveParticlePosResource(const FIntPoint& FieldSize) {
+	WaveParticlePosBuffer->Initialize(sizeof(FVector2D), SharedParticlePos->Num(), EPixelFormat::PF_G32R32F, BUF_Dynamic);
+	WaveParticleFieldBuffer->Initialize(sizeof(uint32), FieldSize.X * 3, FieldSize.Y * 3, EPixelFormat::PF_R32_UINT);
 }

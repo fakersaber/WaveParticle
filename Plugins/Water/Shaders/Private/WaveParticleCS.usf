@@ -23,6 +23,15 @@ void ComputeFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
     uint index = DispatchThreadID.y * ThreadWidth + DispatchThreadID.x;
     uint ParticleIndex = index / (ParticleWidth * ParticleHeight);
+    uint ParticleNum;
+    WaveParticlePos.GetDimensions(ParticleNum);
+    
+    BRANCH
+    if (ParticleIndex >= ParticleNum)
+    {
+        return;
+    }
+    
     float2 StartPostion = WaveParticlePos[ParticleIndex] - float2(ParticleSize * 0.5f, ParticleSize * 0.5f);
     
     uint2 StartPositionIndex_Field = ceil(StartPostion / VectorFieldDensity);
@@ -52,6 +61,6 @@ void ComputeFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     //test
     GridIndex = GridIndex + uint2(2, 0);
     uint Z = ceil(z * 65535);
-    
+     
     InterlockedAdd(VectorField[GridIndex], Z);
 }
