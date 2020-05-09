@@ -1,0 +1,23 @@
+#ifndef COMPORESSION_THREAD_GROUP_SIZE
+#define COMPORESSION_THREAD_GROUP_SIZE 8
+#endif
+
+Texture2D<int> VectorField;
+RWTexture2D<float4> CompressionTarget;
+
+[numthreads(COMPORESSION_THREAD_GROUP_SIZE, COMPORESSION_THREAD_GROUP_SIZE, 1)]
+void CompressionFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    uint2 index_1 = uint2(DispatchThreadID.x * 3, DispatchThreadID.y);
+    uint2 index_2 = uint2(DispatchThreadID.x * 3 + 1, DispatchThreadID.y);
+    uint2 index_3 = uint2(DispatchThreadID.x * 3 + 2, DispatchThreadID.y);
+    
+    float4 Value = float4(
+        float(VectorField[index_1]) / 65535.f,
+        float(VectorField[index_2]) / 65535.f,
+        float(VectorField[index_3]) / 65535.f,
+        0.f
+    );
+   
+    CompressionTarget[DispatchThreadID.xy] = Value;
+}

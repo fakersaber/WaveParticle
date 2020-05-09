@@ -1,11 +1,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "RHICommandList.h"
+#include "RHIDefinitions.h"
 
 class FTextureRenderTargetResource;
+class FRHICommandListImmediate;
+
 
 struct FReadBuffer;
+struct FTextureRWBuffer2D;
 
 struct FWaveParticle {
 	//粒子通用属性
@@ -43,7 +46,8 @@ public:
 	void UpdateWaveParticleFiled(
 		FRHICommandListImmediate& RHICmdList,
 		const FUpdateFieldStruct& StructData,
-		ERHIFeatureLevel::Type FeatureLevel
+		ERHIFeatureLevel::Type FeatureLevel,
+		UTexture2D* CopyVectorFieldTexPtr
 	);
 
 	void InitWaveParticlePosResource(const FIntPoint& FieldSize);
@@ -54,4 +58,5 @@ private:
 
 	FReadBuffer* WaveParticlePosBuffer;
 	FTextureRWBuffer2D* WaveParticleFieldBuffer;
+	FTextureRWBuffer2D* WaveParticleFieldComPression;
 };

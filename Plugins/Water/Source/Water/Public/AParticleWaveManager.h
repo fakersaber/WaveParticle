@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "WaveParticleCS.h"
 #include "AParticleWaveManager.generated.h"
 
 
@@ -12,8 +11,12 @@ class UProceduralMeshComponent;
 class AWaveParticleTile;
 class UMaterialInterface;
 class UTextureRenderTarget;
+class FWaveParticle_GPU;
 
 struct FUpdateTextureRegion2D;
+struct FUpdateFieldStruct;
+
+
 
 UCLASS()
 class WATER_API AParticleWaveManager : public AActor
@@ -102,12 +105,6 @@ public:
 	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
 		UStaticMesh* WaterMesh;
 
-	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
-		UTextureRenderTarget* ParticleVectorFieldRenderTarget;
-
-	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
-		UTextureRenderTarget* ParticleNormalRenderTarget;
-
 private:
 	
 	TSharedPtr<FUpdateTextureRegion2D> UpdateTextureRegion2D;
@@ -145,6 +142,6 @@ public:
 	const static FVector2D UVScale1;
 	const static FVector2D UVScale2;
 	const static FVector2D UVScale3;
-	static FUpdateFieldStruct UpdateParticleData;
+	static TSharedPtr<FUpdateFieldStruct> UpdateParticleData;
 };
 

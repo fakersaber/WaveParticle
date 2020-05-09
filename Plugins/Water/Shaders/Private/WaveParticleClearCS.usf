@@ -1,0 +1,11 @@
+#ifndef CLEAR_THREAD_GROUP_SIZE
+#define CLEAR_THREAD_GROUP_SIZE 8
+#endif
+
+RWTexture2D<int> VectorField;
+
+[numthreads(CLEAR_THREAD_GROUP_SIZE, CLEAR_THREAD_GROUP_SIZE, 1)]
+void ClearComputeFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    VectorField[DispatchThreadID.xy] = 0;
+}

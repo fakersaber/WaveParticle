@@ -7,20 +7,23 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "ProceduralMeshComponent.h"
 #include "PhysicsEngine/BodySetup.h"
-#include "WaveParticleTile.h"
 #include "RHI.h"
 #include "Engine/Engine.h"
+
+#include "WaveParticleTile.h"
+#include "WaveParticleCS.h"
+
 #include "Engine/TextureRenderTarget.h"
 
 
-#define CPU_PARTICLE_VERSION 0
+#define CPU_PARTICLE_VERSION 1
 
 
 static const float Y_PI = 3.1415926535897932f;
 const FVector2D AParticleWaveManager::UVScale1 = FVector2D(0.125f, 0.125f);
 const FVector2D AParticleWaveManager::UVScale2 = FVector2D(0.25f, 0.25f);
 const FVector2D AParticleWaveManager::UVScale3 = FVector2D(0.5f, 0.5f);
-FUpdateFieldStruct AParticleWaveManager::UpdateParticleData;
+TSharedPtr<FUpdateFieldStruct> AParticleWaveManager::UpdateParticleData = nullptr;;
 
 float FWaveParticle::Size = 0.f;
 uint32 FWaveParticle::width = 0;
@@ -85,7 +88,7 @@ void AParticleWaveManager::ClearResource() {
 		ENQUEUE_RENDER_COMMAND(FReleaseWaveParticleResource)([this](FRHICommandListImmediate& RHICmdList) {
 			UE_LOG(LogTemp, Log, TEXT("Destroy Delegate"));
 			GEngine->PreRenderDelegate.RemoveAll(this);
-			});
+		});
 		WaveParticleGPU.Reset();
 	}
 #endif
@@ -127,19 +130,30 @@ void AParticleWaveManager::InitWaveParticle() {
 	VectorFieldDensityY = static_cast<float>(PlaneSize.Y) / VectorFieldSize.Y;
 
 	FWaveParticle::Size = 2 * 3.14151926f * ParticleScale;
+
+	//检查是贴图大小是否为2的幂
+	check(FMath::CountBits(VectorFieldSize.X) == 1);
+	check(FMath::CountBits(VectorFieldSize.Y) == 1);
+	
+	//保证粒子大小
+	//check(FVector2D(FWaveParticle::Size, FWaveParticle::Size) < FVector2D(VectorFieldSize));
+
 	FWaveParticle::width = FMath::CeilToInt(FWaveParticle::Size / VectorFieldDensityX);
 	FWaveParticle::height = FMath::CeilToInt(FWaveParticle::Size / VectorFieldDensityY);
 
-	AParticleWaveManager::UpdateParticleData.InThreadSize = FIntPoint(
+
+	AParticleWaveManager::UpdateParticleData = MakeShared<FUpdateFieldStruct>();
+
+
+	AParticleWaveManager::UpdateParticleData->InThreadSize = FIntPoint(
 		FMath::CeilToInt(FMath::Sqrt(ParticleNum)) * FWaveParticle::width,
 		FMath::CeilToInt(FMath::Sqrt(ParticleNum)) * FWaveParticle::height
 	);
-
-	AParticleWaveManager::UpdateParticleData.InParticleQuadSize = FIntPoint(FWaveParticle::width, FWaveParticle::height);
-	AParticleWaveManager::UpdateParticleData.InVectorFieldDensity = FVector2D(VectorFieldDensityX, VectorFieldDensityY);
-	AParticleWaveManager::UpdateParticleData.InParticleSize = FWaveParticle::Size;
-	AParticleWaveManager::UpdateParticleData.InBeta = Beta;
-	AParticleWaveManager::UpdateParticleData.InParticleScale = ParticleScale;
+	AParticleWaveManager::UpdateParticleData->InParticleQuadSize = FIntPoint(FWaveParticle::width, FWaveParticle::height);
+	AParticleWaveManager::UpdateParticleData->InVectorFieldDensity = FVector2D(VectorFieldDensityX, VectorFieldDensityY);
+	AParticleWaveManager::UpdateParticleData->InParticleSize = FWaveParticle::Size;
+	AParticleWaveManager::UpdateParticleData->InBeta = Beta;
+	AParticleWaveManager::UpdateParticleData->InParticleScale = ParticleScale;
 
 	//init particle position and speed
 	{
@@ -156,14 +170,13 @@ void AParticleWaveManager::InitWaveParticle() {
 			auto RandomSpeedY = FMath::FRand() * 2.f - 1.f;
 			auto Sign_X = FMath::Sign(RandomSpeedX);
 			auto Sign_Y = FMath::Sign(RandomSpeedY);
-			RandomSpeedX = Sign_Y < 0 ? RandomSpeedX * SpeedK - MinParticleSpeed : RandomSpeedX * SpeedK + MinParticleSpeed;
+			RandomSpeedX = Sign_X < 0 ? RandomSpeedX * SpeedK - MinParticleSpeed : RandomSpeedX * SpeedK + MinParticleSpeed;
 			RandomSpeedY = Sign_Y < 0 ? RandomSpeedY * SpeedK - MinParticleSpeed : RandomSpeedY * SpeedK + MinParticleSpeed;
 			FVector2D Speed(RandomSpeedX, RandomSpeedY);
 			ParticleSpeedContainer->Emplace(Speed);
 		}
 	}
 
-#if CPU_PARTICLE_VERSION
 	//Init Texture Resources
 	{
 		VectorFieldTex = UTexture2D::CreateTransient(VectorFieldSize.X, VectorFieldSize.Y, PF_A32B32G32R32F);
@@ -171,6 +184,7 @@ void AParticleWaveManager::InitWaveParticle() {
 		VectorFieldTex->AddressX = TA_Wrap;
 		VectorFieldTex->AddressY = TA_Wrap;
 		VectorFieldTex->UpdateResource();
+
 		NormalMapTex = UTexture2D::CreateTransient(VectorFieldSize.X, VectorFieldSize.Y, PF_A32B32G32R32F);
 		NormalMapTex->Filter = TF_Bilinear;
 		NormalMapTex->AddressX = TA_Wrap;
@@ -178,7 +192,6 @@ void AParticleWaveManager::InitWaveParticle() {
 		NormalMapTex->UpdateResource();
 		UpdateTextureRegion2D = MakeShared<FUpdateTextureRegion2D>(0, 0, 0, 0, VectorFieldSize.X, VectorFieldSize.Y);
 	}
-#endif
 
 
 #if !CPU_PARTICLE_VERSION
@@ -188,7 +201,7 @@ void AParticleWaveManager::InitWaveParticle() {
 	FIntPoint FieldSize(VectorFieldSize);
 	ENQUEUE_RENDER_COMMAND(FComputeWaveParticle)([WaveParticleShared, FieldSize](FRHICommandListImmediate& RHICmdList) {
 		WaveParticleShared->InitWaveParticlePosResource(FieldSize);
-		});
+	});
 
 #endif
 
@@ -253,23 +266,24 @@ void AParticleWaveManager::UpdateParticle_GPU(float DeltaTime) {
 	TSharedPtr<FWaveParticle_GPU, ESPMode::ThreadSafe> WaveParticleShared(WaveParticleGPU);
 	UWorld* World = GetWorld();
 	ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
-	float ParticleTickTime = World->TimeSeconds;
 
 	//保证一次数据的完整性
 	FUpdateFieldStruct TempRenderData;
-	FMemory::Memcpy(&TempRenderData, &AParticleWaveManager::UpdateParticleData, sizeof(FUpdateFieldStruct));
+	FMemory::Memcpy(&TempRenderData, AParticleWaveManager::UpdateParticleData.Get(), sizeof(FUpdateFieldStruct));
 
-	ENQUEUE_RENDER_COMMAND(FWaveParticleBind)([this, FeatureLevel, WaveParticleShared, ParticleTickTime, TempRenderData](FRHICommandListImmediate& RHICmdList) {
+	UTexture2D* CopyVectorFieldTexPtr = VectorFieldTex;
+
+	ENQUEUE_RENDER_COMMAND(FWaveParticleBind)([this, FeatureLevel, WaveParticleShared, TempRenderData, CopyVectorFieldTexPtr](FRHICommandListImmediate& RHICmdList) {
 		if (!GEngine->PreRenderDelegate.IsBoundToObject(this))
 		{
-			//UE_LOG(LogTemp, Log, TEXT("BindThis"));
-			GEngine->PreRenderDelegate.AddWeakLambda(this, [FeatureLevel, WaveParticleShared, ParticleTickTime, this, TempRenderData]() {
+			GEngine->PreRenderDelegate.AddWeakLambda(this, [FeatureLevel, WaveParticleShared, this, TempRenderData, CopyVectorFieldTexPtr]() {
 				FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
-				WaveParticleShared->UpdateWaveParticlePos(ParticleTickTime);
+				WaveParticleShared->UpdateWaveParticlePos(this->GetWorld()->DeltaTimeSeconds);
 				WaveParticleShared->UpdateWaveParticleFiled(
 					RHICmdList,
 					TempRenderData,
-					FeatureLevel
+					FeatureLevel,
+					CopyVectorFieldTexPtr
 				);
 			});
 		}
@@ -286,8 +300,11 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 	FMemory::Memzero(CurFrameVectorField.GetData(), 4 * sizeof(float) * VectorFieldSize.X * VectorFieldSize.Y);
 	FMemory::Memzero(CurFrameNormal.GetData(), 4 * sizeof(float) * VectorFieldSize.X * VectorFieldSize.Y);
 
-	for (uint32 i = 0; i < ParticleNum; i++) {
+	float halfSize = FWaveParticle::Size * 0.5f;
+	FVector2D MaxEdgeValue = FVector2D(VectorFieldSize) + halfSize;
+	FVector2D MinEdgeValue(-halfSize, -halfSize);
 
+	for (uint32 i = 0; i < ParticleNum; i++) {
 		(*ParticlePosContainer)[i] += (*ParticleSpeedContainer)[i] * DeltaTime;
 
 		//理论边缘值
@@ -302,7 +319,6 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 		//对应边缘quad的实际Mesh坐标
 		FVector2D RealStartPosition(StartPositionIndex.X * VectorFieldDensityX, StartPositionIndex.Y * VectorFieldDensityY);
 
-
 		for (uint32 y = 0; y < FWaveParticle::height; y++) {
 			for (uint32 x = 0; x < FWaveParticle::width; x++) {
 
@@ -316,7 +332,11 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 				float PlanePlacement = param * Beta * FMath::Sin(length / ParticleScale);
 				FVector2D newpos = Direction * PlanePlacement;
 
-				uint32 gridindex = (VectorFieldSize.X * ((StartPositionIndex.Y + y) % VectorFieldSize.Y) + ((x + StartPositionIndex.X) % VectorFieldSize.X)) * 4;
+				//等价于 2^32 - abs(x), x<0
+				uint32 CurGridIndex_Y = static_cast<uint32>(StartPositionIndex.Y + y) & static_cast<uint32>(VectorFieldSize.Y - 1);
+				uint32 CurGridIndex_X = static_cast<uint32>(StartPositionIndex.X + x) & static_cast<uint32>(VectorFieldSize.X - 1);
+
+				uint32 gridindex = (VectorFieldSize.X * CurGridIndex_Y + CurGridIndex_X) * 4;
 				CurFrameVectorField[gridindex] += newpos.X;
 				CurFrameVectorField[gridindex + 1] += newpos.Y;
 				CurFrameVectorField[gridindex + 2] += 0.5 * (FMath::Cos(length / ParticleScale) + 1.f) * param;
@@ -330,25 +350,56 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 	{
 		for (int32 y = 0; y < VectorFieldSize.Y; ++y) {
 			for (int32 x = 0; x < VectorFieldSize.X; ++x) {
+				uint32 LeftIndex = static_cast<uint32>(x - 1) & (VectorFieldSize.X - 1);
+				uint32 RightIndex = static_cast<uint32>(x + 1) & (VectorFieldSize.X - 1);
+				uint32 TopIndex = static_cast<uint32>(y - 1) & (VectorFieldSize.Y - 1);
+				uint32 DownIndex = static_cast<uint32>(y + 1) & (VectorFieldSize.Y - 1);
+				//以当前点为原点，然后使在xy方向都增加dx dy
+				//dx = dy = 1
+				FVector CurPlacementWithHeight(
+					CurFrameVectorField[(y * VectorFieldSize.X + x) * 4],
+					CurFrameVectorField[(y * VectorFieldSize.X + x) * 4 + 1],
+					CurFrameVectorField[(y * VectorFieldSize.X + x) * 4 + 2]
+				);
 
-				uint32 LeftIndex = (x - 1) & (VectorFieldSize.X - 1);
-				uint32 RightIndex = (x + 1) & (VectorFieldSize.X - 1);
+				FVector RightPlacementWithHeight(
+					CurFrameVectorField[(y * VectorFieldSize.X + RightIndex) * 4],
+					CurFrameVectorField[(y * VectorFieldSize.X + RightIndex) * 4 + 1],
+					CurFrameVectorField[(y * VectorFieldSize.X + RightIndex) * 4 + 2]
+				);
 
-				uint32 TopIndex = (y - 1) & (VectorFieldSize.Y - 1);
-				uint32 DownIndex = (y + 1) & (VectorFieldSize.Y - 1);
+				FVector DownPlacementWithHeight(
+					CurFrameVectorField[(DownIndex * VectorFieldSize.Y + x) * 4 ],
+					CurFrameVectorField[(DownIndex * VectorFieldSize.Y + x) * 4 + 1],
+					CurFrameVectorField[(DownIndex * VectorFieldSize.Y + x) * 4 + 2]
+				);
 
-				float leftZ = CurFrameVectorField[(y * VectorFieldSize.X + LeftIndex) * 4 + 2];
-				float RightZ = CurFrameVectorField[(y * VectorFieldSize.X + RightIndex) * 4 + 2];
+				FVector dx(1.0, 0.f, 0.f);
+				FVector dy(0.f, 1.f, 0.f);
 
-				float TopZ = CurFrameVectorField[(TopIndex * VectorFieldSize.Y + x) * 4 + 2];
-				float DownZ = CurFrameVectorField[(DownIndex * VectorFieldSize.Y + x) * 4 + 2];
+				FVector RightVec = dx + RightPlacementWithHeight - CurPlacementWithHeight;
+				FVector DownVec = dy + DownPlacementWithHeight - CurPlacementWithHeight;
 
-				//gradient
+				FVector normal = FVector::CrossProduct(RightVec, DownVec).GetSafeNormal();
+
 				int32 PlacementIndex = (y * VectorFieldSize.X + x) * 4;
-				CurFrameNormal[PlacementIndex] = leftZ - RightZ;
-				CurFrameNormal[PlacementIndex + 1] = TopZ - DownZ;
-				CurFrameNormal[PlacementIndex + 2] = TILE_SIZE_X2;
+
+				CurFrameNormal[PlacementIndex] = normal.X;
+				CurFrameNormal[PlacementIndex + 1] = normal.Y;
+				CurFrameNormal[PlacementIndex + 2] = normal.Z;
 				CurFrameNormal[PlacementIndex + 3] = 0.f;
+
+				//float leftZ = CurFrameVectorField[(y * VectorFieldSize.X + LeftIndex) * 4 + 2];
+				//float RightZ = CurFrameVectorField[(y * VectorFieldSize.X + RightIndex) * 4 + 2];
+				//float TopZ = CurFrameVectorField[(TopIndex * VectorFieldSize.Y + x) * 4 + 2];
+				//float DownZ = CurFrameVectorField[(DownIndex * VectorFieldSize.Y + x) * 4 + 2];
+
+				////gradient, only height
+				//int32 PlacementIndex = (y * VectorFieldSize.X + x) * 4;
+				//CurFrameNormal[PlacementIndex] = leftZ - RightZ;
+				//CurFrameNormal[PlacementIndex + 1] = TopZ - DownZ;
+				//CurFrameNormal[PlacementIndex + 2] = TILE_SIZE_X2;
+				//CurFrameNormal[PlacementIndex + 3] = 0.f;
 			}
 		}
 	}
