@@ -2,7 +2,7 @@
 
 **Mobile效果**：
 
-![GIF 2020-5-9 19-02-01](GIF 2020-5-9 19-02-01.gif)
+![image](assets/water.gif)
 
 
 
