@@ -24,10 +24,13 @@ public:
 		ThreadWidth.Bind(Initializer.ParameterMap, TEXT("ThreadWidth"));
 		ParticleWidth.Bind(Initializer.ParameterMap, TEXT("ParticleWidth"));
 		ParticleHeight.Bind(Initializer.ParameterMap, TEXT("ParticleHeight"));
+		ParticleNum.Bind(Initializer.ParameterMap, TEXT("ParticleNum"));
 		VectorFieldDensity.Bind(Initializer.ParameterMap, TEXT("VectorFieldDensity"));
 		ParticleSize.Bind(Initializer.ParameterMap, TEXT("ParticleSize"));
 		Beta.Bind(Initializer.ParameterMap, TEXT("Beta"));
 		ParticleScale.Bind(Initializer.ParameterMap, TEXT("ParticleScale"));
+
+
 		WaveParticlePos_SRV.Bind(Initializer.ParameterMap, TEXT("WaveParticlePos"));
 		WaveParticleField_UAV.Bind(Initializer.ParameterMap, TEXT("VectorField"));
 	}
@@ -58,10 +61,13 @@ public:
 		SetShaderValue(RHICmdList, GetComputeShader(), ThreadWidth, StructData.InThreadSize.X);
 		SetShaderValue(RHICmdList, GetComputeShader(), ParticleWidth, StructData.InParticleQuadSize.X);
 		SetShaderValue(RHICmdList, GetComputeShader(), ParticleHeight, StructData.InParticleQuadSize.Y);
+		SetShaderValue(RHICmdList, GetComputeShader(), ParticleNum, StructData.InParticleNum);
+
 		SetShaderValue(RHICmdList, GetComputeShader(), VectorFieldDensity, StructData.InVectorFieldDensity);
 		SetShaderValue(RHICmdList, GetComputeShader(), ParticleSize, StructData.InParticleSize);
 		SetShaderValue(RHICmdList, GetComputeShader(), Beta, StructData.InBeta);
 		SetShaderValue(RHICmdList, GetComputeShader(), ParticleScale, StructData.InParticleScale);
+		
 
 		SetSRVParameter(RHICmdList, GetComputeShader(), WaveParticlePos_SRV, InWaveParticlePos_SRV);
 		if (WaveParticleField_UAV.IsBound()) {
@@ -88,8 +94,10 @@ public:
 		Ar << ParticleSize;
 		Ar << Beta;
 		Ar << ParticleScale;
+		Ar << ParticleNum;
 		Ar << WaveParticlePos_SRV;
 		Ar << WaveParticleField_UAV;
+		
 
 		return bShaderHasOutdatedParameters;
 	}
@@ -103,6 +111,7 @@ private:
 	FShaderParameter ParticleSize;
 	FShaderParameter Beta;
 	FShaderParameter ParticleScale;
+	FShaderParameter ParticleNum;
 
 	FShaderResourceParameter WaveParticlePos_SRV;
 	FShaderResourceParameter WaveParticleField_UAV;
@@ -169,8 +178,9 @@ public:
 	FWaveParticleCompressionCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
 		FGlobalShader(Initializer)
 	{
-		CompressionTarget.Bind(Initializer.ParameterMap, TEXT("CompressionTarget"));
 		SINTVectorFieldTex.Bind(Initializer.ParameterMap, TEXT("VectorField"));
+		CompressionTarget.Bind(Initializer.ParameterMap, TEXT("CompressionTarget"));
+		NormalTarget.Bind(Initializer.ParameterMap, TEXT("NormalTarget"));
 	}
 
 	static bool ShouldCache(EShaderPlatform Platform)
@@ -195,6 +205,7 @@ public:
 
 		Ar << SINTVectorFieldTex;
 		Ar << CompressionTarget;
+		Ar << NormalTarget;
 
 		return bShaderHasOutdatedParameters;
 	}
@@ -203,6 +214,7 @@ public:
 public:
 	FShaderResourceParameter SINTVectorFieldTex;
 	FShaderResourceParameter CompressionTarget;
+	FShaderResourceParameter NormalTarget;
 };
 
 
@@ -220,6 +232,7 @@ FWaveParticle_GPU::FWaveParticle_GPU(
 	WaveParticlePosBuffer = new FReadBuffer();
 	WaveParticleFieldBuffer = new FTextureRWBuffer2D();
 	WaveParticleFieldComPression = new FTextureRWBuffer2D();
+	WaveParticleNormal = new FTextureRWBuffer2D();
 }
 
 
@@ -227,10 +240,12 @@ FWaveParticle_GPU::~FWaveParticle_GPU() {
 	delete WaveParticlePosBuffer;
 	delete WaveParticleFieldBuffer;
 	delete WaveParticleFieldComPression;
+	delete WaveParticleNormal;
 
 	WaveParticlePosBuffer = nullptr;
 	WaveParticleFieldBuffer = nullptr;
 	WaveParticleFieldComPression = nullptr;
+	WaveParticleNormal = nullptr;
 }
 
 void FWaveParticle_GPU::UpdateWaveParticlePos(float ParticleTickTime)
@@ -244,10 +259,9 @@ void FWaveParticle_GPU::UpdateWaveParticlePos(float ParticleTickTime)
 }
 
 
-void FWaveParticle_GPU::UpdateWaveParticleFiled(FRHICommandListImmediate& RHICmdList,const FUpdateFieldStruct& StructData,ERHIFeatureLevel::Type FeatureLevel,UTexture2D* CopyVectorFieldTexPtr)
+void FWaveParticle_GPU::UpdateWaveParticleFiled(FRHICommandListImmediate& RHICmdList,const FUpdateFieldStruct& StructData,ERHIFeatureLevel::Type FeatureLevel,UTexture2D* CopyVectorFieldTexPtr, UTexture2D* CopyNormal)
 {
 	RHICmdList.BeginComputePass(TEXT("ComputeField"));
-
 	//Clear Pass
 	{
 		TShaderMapRef<FWaveParticleClearCS> ComputeShader(GetGlobalShaderMap(FeatureLevel));
@@ -277,11 +291,14 @@ void FWaveParticle_GPU::UpdateWaveParticleFiled(FRHICommandListImmediate& RHICmd
 			WaveParticleFieldBuffer->UAV
 		);
 
+		uint32 GroupSize_X = StructData.InThreadSize.X / CLEAR_PARTICLE_GROUP_SIZE;
+		uint32 GroupSize_Y = StructData.InThreadSize.Y / CLEAR_PARTICLE_GROUP_SIZE;
+
 		DispatchComputeShader(
 			RHICmdList,
 			*WaveParticlePlacementShader,
-			FMath::DivideAndRoundUp(StructData.InThreadSize.X, WAVE_GROUP_THREAD_COUNTS),
-			FMath::DivideAndRoundUp(StructData.InThreadSize.Y, WAVE_GROUP_THREAD_COUNTS),
+			GroupSize_X,
+			GroupSize_Y,
 			1ul
 		);
 
@@ -291,30 +308,32 @@ void FWaveParticle_GPU::UpdateWaveParticleFiled(FRHICommandListImmediate& RHICmd
 	}
 
 
-	//Comporession VectorField
+	//Comporession VectorField and calculate normal
 	{
 		TShaderMapRef<FWaveParticleCompressionCS> ComputeShader(GetGlobalShaderMap(FeatureLevel));
 		FRHIComputeShader* ShaderRHI = ComputeShader->GetComputeShader();
 		RHICmdList.SetComputeShader(ShaderRHI);
 		SetTextureParameter(RHICmdList, ShaderRHI, ComputeShader->SINTVectorFieldTex, WaveParticleFieldBuffer->Buffer);
 		SetUAVParameter(RHICmdList, ShaderRHI, ComputeShader->CompressionTarget, WaveParticleFieldComPression->UAV);
-
+		SetUAVParameter(RHICmdList, ShaderRHI, ComputeShader->NormalTarget, WaveParticleNormal->UAV);
 		RHICmdList.DispatchComputeShader(
 			FMath::DivideAndRoundUp(WaveParticleFieldComPression->Buffer->GetSizeX(), CLEAR_PARTICLE_GROUP_SIZE),
 			FMath::DivideAndRoundUp(WaveParticleFieldComPression->Buffer->GetSizeY(), CLEAR_PARTICLE_GROUP_SIZE),
 			1
 		);
-
 		SetUAVParameter(RHICmdList, ShaderRHI, ComputeShader->CompressionTarget, nullptr);
+		SetUAVParameter(RHICmdList, ShaderRHI, ComputeShader->NormalTarget, nullptr);
 		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToGfx, WaveParticleFieldComPression->UAV);
+		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToGfx, WaveParticleNormal->UAV);
 	}
+	RHICmdList.EndComputePass();
 
-	FTexture2DRHIRef MaterialTextureRHI = reinterpret_cast<FTexture2DResource*>(CopyVectorFieldTexPtr->Resource)->GetTexture2DRHI();
 
 	//#TODO: 可修改UTexture2D来避免复制，在InitRHI()时带上对应标志
-	RHICmdList.CopyTexture(WaveParticleFieldComPression->Buffer, MaterialTextureRHI, FRHICopyTextureInfo());
-
-	RHICmdList.EndComputePass();
+	FTexture2DRHIRef MaterialFieldTextureRHI = reinterpret_cast<FTexture2DResource*>(CopyVectorFieldTexPtr->Resource)->GetTexture2DRHI();
+	FTexture2DRHIRef MaterialNormalTextureRHI = reinterpret_cast<FTexture2DResource*>(CopyNormal->Resource)->GetTexture2DRHI();
+	RHICmdList.CopyTexture(WaveParticleFieldComPression->Buffer, MaterialFieldTextureRHI, FRHICopyTextureInfo());
+	RHICmdList.CopyTexture(WaveParticleNormal->Buffer, MaterialNormalTextureRHI, FRHICopyTextureInfo());
 }
 
 
@@ -322,4 +341,5 @@ void FWaveParticle_GPU::InitWaveParticlePosResource(const FIntPoint& FieldSize) 
 	WaveParticlePosBuffer->Initialize(sizeof(FVector2D), SharedParticlePos->Num(), EPixelFormat::PF_G32R32F, BUF_Dynamic);
 	WaveParticleFieldBuffer->Initialize(sizeof(uint32), FieldSize.X * 3, FieldSize.Y, EPixelFormat::PF_R32_SINT);
 	WaveParticleFieldComPression->Initialize(sizeof(float) * 4, FieldSize.X, FieldSize.Y, EPixelFormat::PF_A32B32G32R32F);
+	WaveParticleNormal->Initialize(sizeof(float) * 4, FieldSize.X, FieldSize.Y, EPixelFormat::PF_A32B32G32R32F);
 }

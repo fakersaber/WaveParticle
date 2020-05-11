@@ -16,7 +16,7 @@
 #include "Engine/TextureRenderTarget.h"
 
 
-#define CPU_PARTICLE_VERSION 1
+#define CPU_PARTICLE_VERSION 0
 
 
 static const float Y_PI = 3.1415926535897932f;
@@ -36,8 +36,8 @@ AParticleWaveManager::AParticleWaveManager()
 	PrimaryActorTick.bCanEverTick = true;
 	ParticleNum = 1;
 	ParticleScale = 1.f;
-	PlaneSize.X = 63;
-	PlaneSize.Y = 63;
+	PlaneSize.X = 64;
+	PlaneSize.Y = 64;
 	VectorFieldSize.X = 64;
 	VectorFieldSize.Y = 64;
 	MaxParticleSpeed = 1.f;
@@ -90,6 +90,7 @@ void AParticleWaveManager::ClearResource() {
 			GEngine->PreRenderDelegate.RemoveAll(this);
 		});
 		WaveParticleGPU.Reset();
+		AParticleWaveManager::UpdateParticleData.Reset();
 	}
 #endif
 
@@ -135,26 +136,29 @@ void AParticleWaveManager::InitWaveParticle() {
 	check(FMath::CountBits(VectorFieldSize.X) == 1);
 	check(FMath::CountBits(VectorFieldSize.Y) == 1);
 	
-	//保证粒子大小
-	//check(FVector2D(FWaveParticle::Size, FWaveParticle::Size) < FVector2D(VectorFieldSize));
 
 	FWaveParticle::width = FMath::CeilToInt(FWaveParticle::Size / VectorFieldDensityX);
 	FWaveParticle::height = FMath::CeilToInt(FWaveParticle::Size / VectorFieldDensityY);
 
-
+#if !CPU_PARTICLE_VERSION
 	AParticleWaveManager::UpdateParticleData = MakeShared<FUpdateFieldStruct>();
 
+	int32 ParticleNumX, ParticleNumY;
+	ParticleNumX = ParticleNumY = FMath::CeilToInt(FMath::Sqrt(ParticleNum));
 
+	//计算CS的总线程宽度大小，注意要取整到8的倍数
 	AParticleWaveManager::UpdateParticleData->InThreadSize = FIntPoint(
-		FMath::CeilToInt(FMath::Sqrt(ParticleNum)) * FWaveParticle::width,
-		FMath::CeilToInt(FMath::Sqrt(ParticleNum)) * FWaveParticle::height
+		FMath::DivideAndRoundUp(ParticleNumX * FWaveParticle::width, 8u) * 8u,
+		FMath::DivideAndRoundUp(ParticleNumY * FWaveParticle::height, 8u) * 8u
 	);
+
 	AParticleWaveManager::UpdateParticleData->InParticleQuadSize = FIntPoint(FWaveParticle::width, FWaveParticle::height);
 	AParticleWaveManager::UpdateParticleData->InVectorFieldDensity = FVector2D(VectorFieldDensityX, VectorFieldDensityY);
 	AParticleWaveManager::UpdateParticleData->InParticleSize = FWaveParticle::Size;
 	AParticleWaveManager::UpdateParticleData->InBeta = Beta;
 	AParticleWaveManager::UpdateParticleData->InParticleScale = ParticleScale;
-
+	AParticleWaveManager::UpdateParticleData->InParticleNum = ParticleNum;
+#endif
 	//init particle position and speed
 	{
 		//分段函数,速度转换的线性函数[0,0.5) 为负，[0.5,1]为正
@@ -272,18 +276,20 @@ void AParticleWaveManager::UpdateParticle_GPU(float DeltaTime) {
 	FMemory::Memcpy(&TempRenderData, AParticleWaveManager::UpdateParticleData.Get(), sizeof(FUpdateFieldStruct));
 
 	UTexture2D* CopyVectorFieldTexPtr = VectorFieldTex;
+	UTexture2D* CopyNormal = NormalMapTex;
 
-	ENQUEUE_RENDER_COMMAND(FWaveParticleBind)([this, FeatureLevel, WaveParticleShared, TempRenderData, CopyVectorFieldTexPtr](FRHICommandListImmediate& RHICmdList) {
+	ENQUEUE_RENDER_COMMAND(FWaveParticleBind)([this, FeatureLevel, WaveParticleShared, TempRenderData, CopyVectorFieldTexPtr, CopyNormal](FRHICommandListImmediate& RHICmdList) {
 		if (!GEngine->PreRenderDelegate.IsBoundToObject(this))
 		{
-			GEngine->PreRenderDelegate.AddWeakLambda(this, [FeatureLevel, WaveParticleShared, this, TempRenderData, CopyVectorFieldTexPtr]() {
+			GEngine->PreRenderDelegate.AddWeakLambda(this, [FeatureLevel, WaveParticleShared, this, TempRenderData, CopyVectorFieldTexPtr, CopyNormal]() {
 				FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
 				WaveParticleShared->UpdateWaveParticlePos(this->GetWorld()->DeltaTimeSeconds);
 				WaveParticleShared->UpdateWaveParticleFiled(
 					RHICmdList,
 					TempRenderData,
 					FeatureLevel,
-					CopyVectorFieldTexPtr
+					CopyVectorFieldTexPtr,
+					CopyNormal
 				);
 			});
 		}
@@ -368,21 +374,42 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 					CurFrameVectorField[(y * VectorFieldSize.X + RightIndex) * 4 + 2]
 				);
 
+				FVector LeftPlacementWithHeight(
+					CurFrameVectorField[(y * VectorFieldSize.X + LeftIndex) * 4],
+					CurFrameVectorField[(y * VectorFieldSize.X + LeftIndex) * 4 + 1],
+					CurFrameVectorField[(y * VectorFieldSize.X + LeftIndex) * 4 + 2]
+				);
+
+				FVector TopPlacementWithHeight(
+					CurFrameVectorField[(TopIndex * VectorFieldSize.Y + x) * 4],
+					CurFrameVectorField[(TopIndex * VectorFieldSize.Y + x) * 4 + 1],
+					CurFrameVectorField[(TopIndex * VectorFieldSize.Y + x) * 4 + 2]
+				);
+
 				FVector DownPlacementWithHeight(
-					CurFrameVectorField[(DownIndex * VectorFieldSize.Y + x) * 4 ],
+					CurFrameVectorField[(DownIndex * VectorFieldSize.Y + x) * 4],
 					CurFrameVectorField[(DownIndex * VectorFieldSize.Y + x) * 4 + 1],
 					CurFrameVectorField[(DownIndex * VectorFieldSize.Y + x) * 4 + 2]
 				);
+
 
 				FVector dx(1.0, 0.f, 0.f);
 				FVector dy(0.f, 1.f, 0.f);
 
 				FVector RightVec = dx + RightPlacementWithHeight - CurPlacementWithHeight;
 				FVector DownVec = dy + DownPlacementWithHeight - CurPlacementWithHeight;
+				FVector LeftVec = -dx + LeftPlacementWithHeight - CurPlacementWithHeight;
+				FVector TopVec = -dy + TopPlacementWithHeight - CurPlacementWithHeight;
 
-				FVector normal = FVector::CrossProduct(RightVec, DownVec).GetSafeNormal();
+
+				FVector RightNormal = FVector::CrossProduct(RightVec, DownVec);
+				FVector LeftNormal = FVector::CrossProduct(LeftVec, TopVec);
+				FVector TopNormal = FVector::CrossProduct(TopVec, RightVec);
+				FVector DownNormal = FVector::CrossProduct(DownVec, LeftVec);
 
 				int32 PlacementIndex = (y * VectorFieldSize.X + x) * 4;
+
+				FVector normal = (RightNormal + LeftNormal + TopNormal + DownNormal).GetSafeNormal();
 
 				CurFrameNormal[PlacementIndex] = normal.X;
 				CurFrameNormal[PlacementIndex + 1] = normal.Y;
@@ -464,3 +491,36 @@ void AParticleWaveManager::PostEditChangeProperty(FPropertyChangedEvent& Propert
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 #endif
+
+//{
+//uint32 TestIndex = 0;
+//CurFrameVectorField[TestIndex++] = FLinearColor::Red.R;
+//CurFrameVectorField[TestIndex++] = FLinearColor::Red.G;
+//CurFrameVectorField[TestIndex++] = FLinearColor::Red.B;
+//CurFrameVectorField[TestIndex++] = 0.f;
+//
+//CurFrameVectorField[TestIndex++] = FLinearColor::Green.R;
+//CurFrameVectorField[TestIndex++] = FLinearColor::Green.G;
+//CurFrameVectorField[TestIndex++] = FLinearColor::Green.B;
+//CurFrameVectorField[TestIndex++] = 0.f;
+//
+//CurFrameVectorField[TestIndex++] = FLinearColor::Blue.R;
+//CurFrameVectorField[TestIndex++] = FLinearColor::Blue.G;
+//CurFrameVectorField[TestIndex++] = FLinearColor::Blue.B;
+//CurFrameVectorField[TestIndex++] = 0.f;
+//
+//CurFrameVectorField[TestIndex++] = FLinearColor::Black.R;
+//CurFrameVectorField[TestIndex++] = FLinearColor::Black.G;
+//CurFrameVectorField[TestIndex++] = FLinearColor::Black.B;
+//CurFrameVectorField[TestIndex++] = 0.f;
+//
+//VectorFieldTex->UpdateTextureRegions(
+//	0,
+//	1,
+//	UpdateTextureRegion2D.Get(),
+//	sizeof(float) * 4 * VectorFieldSize.X,
+//	16,
+//	reinterpret_cast<uint8*>(CurFrameVectorField.GetData())
+//);
+//
+//return;}

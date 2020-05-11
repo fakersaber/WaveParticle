@@ -4,20 +4,86 @@
 
 Texture2D<int> VectorField;
 RWTexture2D<float4> CompressionTarget;
+RWTexture2D<float4> NormalTarget;
+
 
 [numthreads(COMPORESSION_THREAD_GROUP_SIZE, COMPORESSION_THREAD_GROUP_SIZE, 1)]
 void CompressionFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-    uint2 index_1 = uint2(DispatchThreadID.x * 3, DispatchThreadID.y);
-    uint2 index_2 = uint2(DispatchThreadID.x * 3 + 1, DispatchThreadID.y);
-    uint2 index_3 = uint2(DispatchThreadID.x * 3 + 2, DispatchThreadID.y);
+    uint2 VectorFieldSize;
+    CompressionTarget.GetDimensions(VectorFieldSize.x, VectorFieldSize.y);
     
-    float4 Value = float4(
-        float(VectorField[index_1]) / 65535.f,
-        float(VectorField[index_2]) / 65535.f,
-        float(VectorField[index_3]) / 65535.f,
-        0.f
+    uint LeftIndex = uint(DispatchThreadID.x - 1) & (VectorFieldSize.x - 1);
+    uint RightIndex = uint(DispatchThreadID.x + 1) & (VectorFieldSize.x - 1);
+    uint TopIndex = uint(DispatchThreadID.y - 1) & (VectorFieldSize.y - 1);
+    uint DownIndex = uint(DispatchThreadID.y + 1) & (VectorFieldSize.y - 1);
+    
+    uint2 CenterIndex_X = uint2(DispatchThreadID.x * 3, DispatchThreadID.y);
+    uint2 CenterIndex_Y = uint2(DispatchThreadID.x * 3 + 1, DispatchThreadID.y);
+    uint2 CenterIndex_Z = uint2(DispatchThreadID.x * 3 + 2, DispatchThreadID.y);
+    
+    uint2 Left_X = uint2(LeftIndex * 3, DispatchThreadID.y);
+    uint2 Left_Y = uint2(LeftIndex * 3 + 1, DispatchThreadID.y);
+    uint2 Left_Z = uint2(LeftIndex * 3 + 2, DispatchThreadID.y);
+    
+    uint2 Right_X = uint2(RightIndex * 3, DispatchThreadID.y);
+    uint2 Right_Y = uint2(RightIndex * 3 + 1, DispatchThreadID.y);
+    uint2 Right_Z = uint2(RightIndex * 3 + 2, DispatchThreadID.y);
+    
+    uint2 Down_X = uint2(DispatchThreadID.x * 3, DownIndex);
+    uint2 Down_Y = uint2(DispatchThreadID.x * 3 + 1, DownIndex);
+    uint2 Down_Z = uint2(DispatchThreadID.x * 3 + 2, DownIndex);
+    
+    uint2 Top_X = uint2(DispatchThreadID.x * 3, TopIndex);
+    uint2 Top_Y = uint2(DispatchThreadID.x * 3 + 1, TopIndex);
+    uint2 Top_Z = uint2(DispatchThreadID.x * 3 + 2, TopIndex);
+    
+    float3 CurPlacementWithHeight = float3(
+        float(VectorField[CenterIndex_X]) / 1048575.f, 
+        float(VectorField[CenterIndex_Y]) / 1048575.f,
+        float(VectorField[CenterIndex_Z]) / 1048575.f
     );
-   
-    CompressionTarget[DispatchThreadID.xy] = Value;
+    
+    float3 LeftPlacementWithHeight = float3(
+        float(VectorField[Left_X]) / 1048575.f,
+        float(VectorField[Left_Y]) / 1048575.f,
+        float(VectorField[Left_Z]) / 1048575.f
+    );
+    
+    float3 RightPlacementWithHeight = float3(
+        float(VectorField[Right_X]) / 1048575.f,
+        float(VectorField[Right_Y]) / 1048575.f,
+        float(VectorField[Right_Z]) / 1048575.f
+    );
+    
+    float3 DownPlacementWithHeight = float3(
+        float(VectorField[Down_X]) / 1048575.f,
+        float(VectorField[Down_Y]) / 1048575.f,
+        float(VectorField[Down_Z]) / 1048575.f
+    );
+    
+    float3 TopPlacementWithHeight = float3(
+        float(VectorField[Top_X]) / 1048575.f,
+        float(VectorField[Top_Y]) / 1048575.f,
+        float(VectorField[Top_Z]) / 1048575.f
+    );
+    
+    float3 dx = float3(1.f, 0.f, 0.f);
+    float3 dy = float3(0.f, 1.f, 0.f);
+
+    float3 LeftVec = -dx + LeftPlacementWithHeight - CurPlacementWithHeight;
+    float3 RightVec = dx + RightPlacementWithHeight - CurPlacementWithHeight;
+    float3 DownVec = dy + DownPlacementWithHeight - CurPlacementWithHeight;
+    float3 TopVec = -dy + TopPlacementWithHeight - CurPlacementWithHeight;
+    
+    float3 LeftNormal = cross(LeftVec, TopVec);
+    float3 RightNormal = cross(RightVec, DownVec);
+    float3 DownNormal = cross(DownVec, LeftVec);
+    float3 TopNormal = cross(TopVec, RightVec);
+    
+    float3 normal = LeftNormal + RightNormal + DownNormal + TopNormal;
+    normal = length(normal) < 1e-8 ? float3(0.f, 0.f, 0.f) : normalize(normal);
+
+    NormalTarget[DispatchThreadID.xy] = float4(normal, 0.f);
+    CompressionTarget[DispatchThreadID.xy] = float4(CurPlacementWithHeight,0.f);
 }

@@ -22,6 +22,7 @@ struct FUpdateFieldStruct {
 	FIntPoint InThreadSize;
 	FIntPoint InParticleQuadSize;
 	FVector2D InVectorFieldDensity;
+	uint32 InParticleNum;
 	float InParticleSize;
 	float InBeta;
 	float InParticleScale;
@@ -47,7 +48,8 @@ public:
 		FRHICommandListImmediate& RHICmdList,
 		const FUpdateFieldStruct& StructData,
 		ERHIFeatureLevel::Type FeatureLevel,
-		UTexture2D* CopyVectorFieldTexPtr
+		UTexture2D* CopyVectorFieldTexPtr,
+		UTexture2D* CopyNormal
 	);
 
 	void InitWaveParticlePosResource(const FIntPoint& FieldSize);
@@ -59,4 +61,5 @@ private:
 	FReadBuffer* WaveParticlePosBuffer;
 	FTextureRWBuffer2D* WaveParticleFieldBuffer;
 	FTextureRWBuffer2D* WaveParticleFieldComPression;
+	FTextureRWBuffer2D* WaveParticleNormal;
 };

@@ -7,10 +7,13 @@
 uint ThreadWidth;
 uint ParticleWidth;
 uint ParticleHeight;
+uint ParticleNum;
+
 float2 VectorFieldDensity;
 float ParticleSize;
 float Beta;
 float ParticleScale;
+
 Buffer<float2> WaveParticlePos;
 RWTexture2D<int> VectorField;
 
@@ -20,7 +23,8 @@ void ComputeFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
     uint index = DispatchThreadID.y * ThreadWidth + DispatchThreadID.x;
     uint ParticleIndex = index / (ParticleWidth * ParticleHeight);
-    uint ParticleNum = 600;
+    
+    //uint ParticleNum = 600;
     //WaveParticlePos.GetDimensions(ParticleNum);
     
     BRANCH
@@ -34,12 +38,10 @@ void ComputeFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     int2 StartPositionIndex_Field = ceil(StartPostion / VectorFieldDensity);
     float2 RealStartPostion_Quad = StartPositionIndex_Field * VectorFieldDensity;
     
-    
     uint CurLoopIndex = index - ParticleIndex * ParticleWidth * ParticleHeight;
     uint y = CurLoopIndex / ParticleWidth;
     uint x = CurLoopIndex - ParticleWidth * y; 
-    
-    
+
     float2 CurPosition = RealStartPostion_Quad + VectorFieldDensity * float2(x, y);
     float2 offset = WaveParticlePos[ParticleIndex] - CurPosition;
     float len = length(offset);
@@ -53,13 +55,15 @@ void ComputeFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     VectorField.GetDimensions(VectorFieldSize.x, VectorFieldSize.y);
     VectorFieldSize.x /= 3;
      
-    uint CurGridIndex_X = uint(uint(StartPositionIndex_Field.x + x) % VectorFieldSize.x) * 3;
-    uint CurGridIndex_Y = uint(StartPositionIndex_Field.y + y) % VectorFieldSize.y;
+    //µÈ¼ÛÓÚ 2^32 - abs(x)£¬
+    uint CurGridIndex_X = uint(uint(StartPositionIndex_Field.x + x) & (VectorFieldSize.x - 1)) * 3;
+    uint CurGridIndex_Y = uint(StartPositionIndex_Field.y + y) & (VectorFieldSize.y - 1);
+    
     uint2 GridIndex = uint2(CurGridIndex_X, CurGridIndex_Y);
     
-    int2 XY = ceil(xyValue * 0xFFFF);
-    int Z = ceil(z * 0xFFFF);
-    
+    int2 XY = ceil(xyValue * 0xFFFFF);
+    int Z = ceil(z * 0xFFFFF);
+     
     InterlockedAdd(VectorField[GridIndex], XY.x);
     InterlockedAdd(VectorField[GridIndex + uint2(1, 0)], XY.y);
     InterlockedAdd(VectorField[GridIndex + uint2(2, 0)], Z);
