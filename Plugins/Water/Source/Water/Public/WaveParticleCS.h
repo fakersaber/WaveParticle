@@ -6,6 +6,7 @@
 class FTextureRenderTargetResource;
 class FRHICommandListImmediate;
 
+class UTextureRenderTarget2D;
 
 struct FReadBuffer;
 struct FTextureRWBuffer2D;
@@ -21,6 +22,7 @@ struct FWaveParticle {
 struct FUpdateFieldStruct {
 	FIntPoint InThreadSize;
 	FIntPoint InParticleQuadSize;
+	FIntPoint InVectorFieldSize;
 	FVector2D InVectorFieldDensity;
 	uint32 InParticleNum;
 	float InParticleSize;
@@ -48,8 +50,8 @@ public:
 		FRHICommandListImmediate& RHICmdList,
 		const FUpdateFieldStruct& StructData,
 		ERHIFeatureLevel::Type FeatureLevel,
-		UTexture2D* CopyVectorFieldTexPtr,
-		UTexture2D* CopyNormal
+		UTextureRenderTarget2D* CopyVectorFieldTexPtr,
+		UTextureRenderTarget2D* CopyNormal
 	);
 
 	void InitWaveParticlePosResource(const FIntPoint& FieldSize);

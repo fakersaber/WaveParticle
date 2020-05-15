@@ -2,6 +2,8 @@
 #define COMPORESSION_THREAD_GROUP_SIZE 8
 #endif
 
+uint2 VectorFieldSize;
+
 Texture2D<int> VectorField;
 RWTexture2D<float4> CompressionTarget;
 RWTexture2D<float4> NormalTarget;
@@ -9,10 +11,7 @@ RWTexture2D<float4> NormalTarget;
 
 [numthreads(COMPORESSION_THREAD_GROUP_SIZE, COMPORESSION_THREAD_GROUP_SIZE, 1)]
 void CompressionFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
-{
-    uint2 VectorFieldSize;
-    CompressionTarget.GetDimensions(VectorFieldSize.x, VectorFieldSize.y);
-    
+{   
     uint LeftIndex = uint(DispatchThreadID.x - 1) & (VectorFieldSize.x - 1);
     uint RightIndex = uint(DispatchThreadID.x + 1) & (VectorFieldSize.x - 1);
     uint TopIndex = uint(DispatchThreadID.y - 1) & (VectorFieldSize.y - 1);

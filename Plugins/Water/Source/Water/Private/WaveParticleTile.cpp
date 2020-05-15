@@ -12,9 +12,9 @@ AWaveParticleTile::AWaveParticleTile()
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
 
-	//WaveMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WaveMesh"));
+	WaveMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WaveMesh"));
 
-	ProceduralWaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("ProceduralWaveMesh"));
+	//ProceduralWaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("ProceduralWaveMesh"));
 }
 
 // Called when the game starts or when spawned
@@ -25,8 +25,6 @@ void AWaveParticleTile::BeginPlay()
 
 
 void AWaveParticleTile::GeneratorStaticMesh(UStaticMesh* MeshAsset) {
-
-
 	WaveMesh->SetStaticMesh(MeshAsset);
 }
 

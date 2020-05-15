@@ -5,7 +5,7 @@
 #include "TextureResource.h"
 #include "RHIUtilities.h"
 #include "ClearReplacementShaders.h"
-#include "Engine/Texture2D.h"
+#include "Engine/TextureRenderTarget2D.h"
 
 
 #define WAVE_GROUP_THREAD_COUNTS 8
@@ -178,6 +178,7 @@ public:
 	FWaveParticleCompressionCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
 		FGlobalShader(Initializer)
 	{
+		VectorFieldSize.Bind(Initializer.ParameterMap, TEXT("VectorFieldSize"));
 		SINTVectorFieldTex.Bind(Initializer.ParameterMap, TEXT("VectorField"));
 		CompressionTarget.Bind(Initializer.ParameterMap, TEXT("CompressionTarget"));
 		NormalTarget.Bind(Initializer.ParameterMap, TEXT("NormalTarget"));
@@ -203,6 +204,7 @@ public:
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
+		Ar << VectorFieldSize;
 		Ar << SINTVectorFieldTex;
 		Ar << CompressionTarget;
 		Ar << NormalTarget;
@@ -212,6 +214,9 @@ public:
 
 
 public:
+	//OpenGL es not support read/write same texture
+	FShaderParameter VectorFieldSize;
+
 	FShaderResourceParameter SINTVectorFieldTex;
 	FShaderResourceParameter CompressionTarget;
 	FShaderResourceParameter NormalTarget;
@@ -259,7 +264,7 @@ void FWaveParticle_GPU::UpdateWaveParticlePos(float ParticleTickTime)
 }
 
 
-void FWaveParticle_GPU::UpdateWaveParticleFiled(FRHICommandListImmediate& RHICmdList,const FUpdateFieldStruct& StructData,ERHIFeatureLevel::Type FeatureLevel,UTexture2D* CopyVectorFieldTexPtr, UTexture2D* CopyNormal)
+void FWaveParticle_GPU::UpdateWaveParticleFiled(FRHICommandListImmediate& RHICmdList,const FUpdateFieldStruct& StructData,ERHIFeatureLevel::Type FeatureLevel, UTextureRenderTarget2D* CopyVectorFieldTexPtr, UTextureRenderTarget2D* CopyNormal)
 {
 	RHICmdList.BeginComputePass(TEXT("ComputeField"));
 	//Clear Pass
@@ -313,6 +318,7 @@ void FWaveParticle_GPU::UpdateWaveParticleFiled(FRHICommandListImmediate& RHICmd
 		TShaderMapRef<FWaveParticleCompressionCS> ComputeShader(GetGlobalShaderMap(FeatureLevel));
 		FRHIComputeShader* ShaderRHI = ComputeShader->GetComputeShader();
 		RHICmdList.SetComputeShader(ShaderRHI);
+		SetShaderValue(RHICmdList, ShaderRHI, ComputeShader->VectorFieldSize, StructData.InVectorFieldSize);
 		SetTextureParameter(RHICmdList, ShaderRHI, ComputeShader->SINTVectorFieldTex, WaveParticleFieldBuffer->Buffer);
 		SetUAVParameter(RHICmdList, ShaderRHI, ComputeShader->CompressionTarget, WaveParticleFieldComPression->UAV);
 		SetUAVParameter(RHICmdList, ShaderRHI, ComputeShader->NormalTarget, WaveParticleNormal->UAV);
@@ -330,8 +336,9 @@ void FWaveParticle_GPU::UpdateWaveParticleFiled(FRHICommandListImmediate& RHICmd
 
 
 	//#TODO: 可修改UTexture2D来避免复制，在InitRHI()时带上对应标志
-	FTexture2DRHIRef MaterialFieldTextureRHI = reinterpret_cast<FTexture2DResource*>(CopyVectorFieldTexPtr->Resource)->GetTexture2DRHI();
-	FTexture2DRHIRef MaterialNormalTextureRHI = reinterpret_cast<FTexture2DResource*>(CopyNormal->Resource)->GetTexture2DRHI();
+
+	FTexture2DRHIRef MaterialFieldTextureRHI = reinterpret_cast<FTextureRenderTarget2DResource*>(CopyVectorFieldTexPtr->Resource)->GetTextureRHI();
+	FTexture2DRHIRef MaterialNormalTextureRHI = reinterpret_cast<FTextureRenderTarget2DResource*>(CopyNormal->Resource)->GetTextureRHI();
 	RHICmdList.CopyTexture(WaveParticleFieldComPression->Buffer, MaterialFieldTextureRHI, FRHICopyTextureInfo());
 	RHICmdList.CopyTexture(WaveParticleNormal->Buffer, MaterialNormalTextureRHI, FRHICopyTextureInfo());
 }

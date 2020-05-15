@@ -65,7 +65,7 @@ void AParticleWaveManager::BeginPlay()
 void AParticleWaveManager::Tick(float DeltaTime) {
 	Super::Tick(DeltaTime);
 
-	if (WaveClassType && WaterMaterial && WaterMesh) {
+	if (WaveClassType && WaterMaterial && WaterMesh && VectorFieldTex && NormalMapTex) {
 		if (!bHasInit) {
 			ClearResource();
 			InitWaveParticle();
@@ -153,6 +153,7 @@ void AParticleWaveManager::InitWaveParticle() {
 	);
 
 	AParticleWaveManager::UpdateParticleData->InParticleQuadSize = FIntPoint(FWaveParticle::width, FWaveParticle::height);
+	AParticleWaveManager::UpdateParticleData->InVectorFieldSize = VectorFieldSize;
 	AParticleWaveManager::UpdateParticleData->InVectorFieldDensity = FVector2D(VectorFieldDensityX, VectorFieldDensityY);
 	AParticleWaveManager::UpdateParticleData->InParticleSize = FWaveParticle::Size;
 	AParticleWaveManager::UpdateParticleData->InBeta = Beta;
@@ -183,18 +184,21 @@ void AParticleWaveManager::InitWaveParticle() {
 
 	//Init Texture Resources
 	{
-		VectorFieldTex = UTexture2D::CreateTransient(VectorFieldSize.X, VectorFieldSize.Y, PF_A32B32G32R32F);
-		VectorFieldTex->Filter = TF_Bilinear;
-		VectorFieldTex->AddressX = TA_Wrap;
-		VectorFieldTex->AddressY = TA_Wrap;
-		VectorFieldTex->UpdateResource();
+		//VectorFieldTex = UTexture2D::CreateTransient(VectorFieldSize.X, VectorFieldSize.Y, PF_A32B32G32R32F);
+		//VectorFieldTex->Filter = TF_Bilinear;
+		//VectorFieldTex->AddressX = TA_Wrap;
+		//VectorFieldTex->AddressY = TA_Wrap;
+		//VectorFieldTex->UpdateResource();
 
-		NormalMapTex = UTexture2D::CreateTransient(VectorFieldSize.X, VectorFieldSize.Y, PF_A32B32G32R32F);
-		NormalMapTex->Filter = TF_Bilinear;
-		NormalMapTex->AddressX = TA_Wrap;
-		NormalMapTex->AddressY = TA_Wrap;
-		NormalMapTex->UpdateResource();
+		//NormalMapTex = UTexture2D::CreateTransient(VectorFieldSize.X, VectorFieldSize.Y, PF_A32B32G32R32F);
+		//NormalMapTex->Filter = TF_Bilinear;
+		//NormalMapTex->AddressX = TA_Wrap;
+		//NormalMapTex->AddressY = TA_Wrap;
+		//NormalMapTex->UpdateResource();
+
+#if CPU_PARTICLE_VERSION
 		UpdateTextureRegion2D = MakeShared<FUpdateTextureRegion2D>(0, 0, 0, 0, VectorFieldSize.X, VectorFieldSize.Y);
+#endif
 	}
 
 
@@ -211,6 +215,7 @@ void AParticleWaveManager::InitWaveParticle() {
 
 	//Spawn Actor
 	{
+
 		FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
 
 		FVector2D HalfTileMeshSize(TileMeshSize * 0.5f);
@@ -222,38 +227,44 @@ void AParticleWaveManager::InitWaveParticle() {
 
 				FVector PositionOffset(FVector2D(x * TileMeshSize.X + HalfTileMeshSize.X, y * TileMeshSize.Y + HalfTileMeshSize.Y) - Center, 0.f);
 				auto NewActor = GetWorld()->SpawnActor<AWaveParticleTile>(WaveClassType, GetActorLocation() + PositionOffset, GetActorRotation());
+
 				//staic mesh version
-				//NewActor->GeneratorStaticMesh(WaterMesh);
-				//UStaticMeshComponent* MeshComponent = NewActor->FindComponentByClass<UStaticMeshComponent>();
+				NewActor->GeneratorStaticMesh(WaterMesh);
+				UStaticMeshComponent* MeshComponent = NewActor->FindComponentByClass<UStaticMeshComponent>();
 
 				//Procudual Mesh version
-				NewActor->GeneratorWaveMesh(GridSize, PlaneSize);
-				UProceduralMeshComponent* MeshComponent = NewActor->FindComponentByClass<UProceduralMeshComponent>();
+				//NewActor->GeneratorWaveMesh(GridSize, PlaneSize);
+				//UProceduralMeshComponent* MeshComponent = NewActor->FindComponentByClass<UProceduralMeshComponent>();
+
+				MeshComponent->SetMaterial(0, WaterMaterial);
+
+				MeshComponent->SetCustomPrimitiveDataVector2(0, FVector2D(FMath::Frac(AParticleWaveManager::UVScale1.X * x), FMath::Frac(AParticleWaveManager::UVScale1.Y * y)));
+				MeshComponent->SetCustomPrimitiveDataVector2(2, FVector2D(FMath::Frac(AParticleWaveManager::UVScale2.X * x), FMath::Frac(AParticleWaveManager::UVScale2.Y * y)));
+				MeshComponent->SetCustomPrimitiveDataVector2(4, FVector2D(FMath::Frac(AParticleWaveManager::UVScale3.X * x), FMath::Frac(AParticleWaveManager::UVScale3.Y * y)));
+
+				//UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, WaterMaterial);
+				//DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
+				//DynamicMaterialInstance->SetTextureParameterValue("FieldNormal", NormalMapTex);
+
+				////2^-1 2^-2 2^-3 均可以精确表示
+				//float EdgeValueX1 = FMath::Frac(AParticleWaveManager::UVScale1.X * x);
+				//float EdgeValueY1 = FMath::Frac(AParticleWaveManager::UVScale1.Y * y);
+
+				//float EdgeValueX2 = FMath::Frac(AParticleWaveManager::UVScale2.X * x);
+				//float EdgeValueY2 = FMath::Frac(AParticleWaveManager::UVScale2.Y * y);
+
+				//float EdgeValueX3 = FMath::Frac(AParticleWaveManager::UVScale3.X * x);
+				//float EdgeValueY3 = FMath::Frac(AParticleWaveManager::UVScale3.Y * y);
 
 
-				UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, WaterMaterial);
-				DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
-				DynamicMaterialInstance->SetTextureParameterValue("FieldNormal", NormalMapTex);
+				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX1", EdgeValueX1);
+				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY1", EdgeValueY1);
 
-				//2^-1 2^-2 2^-3 均可以精确表示
-				float EdgeValueX1 = FMath::Frac(AParticleWaveManager::UVScale1.X * x);
-				float EdgeValueY1 = FMath::Frac(AParticleWaveManager::UVScale1.Y * y);
+				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX2", EdgeValueX2);
+				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY2", EdgeValueY2);
 
-				float EdgeValueX2 = FMath::Frac(AParticleWaveManager::UVScale2.X * x);
-				float EdgeValueY2 = FMath::Frac(AParticleWaveManager::UVScale2.Y * y);
-
-				float EdgeValueX3 = FMath::Frac(AParticleWaveManager::UVScale3.X * x);
-				float EdgeValueY3 = FMath::Frac(AParticleWaveManager::UVScale3.Y * y);
-
-
-				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX1", EdgeValueX1);
-				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY1", EdgeValueY1);
-
-				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX2", EdgeValueX2);
-				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY2", EdgeValueY2);
-
-				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX3", EdgeValueX3);
-				DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY3", EdgeValueY3);
+				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX3", EdgeValueX3);
+				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY3", EdgeValueY3);
 
 				WaveParticleTileContainer.Emplace(NewActor);
 				NewActor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
@@ -275,8 +286,8 @@ void AParticleWaveManager::UpdateParticle_GPU(float DeltaTime) {
 	FUpdateFieldStruct TempRenderData;
 	FMemory::Memcpy(&TempRenderData, AParticleWaveManager::UpdateParticleData.Get(), sizeof(FUpdateFieldStruct));
 
-	UTexture2D* CopyVectorFieldTexPtr = VectorFieldTex;
-	UTexture2D* CopyNormal = NormalMapTex;
+	UTextureRenderTarget2D* CopyVectorFieldTexPtr = VectorFieldTex;
+	UTextureRenderTarget2D* CopyNormal = NormalMapTex;
 
 	ENQUEUE_RENDER_COMMAND(FWaveParticleBind)([this, FeatureLevel, WaveParticleShared, TempRenderData, CopyVectorFieldTexPtr, CopyNormal](FRHICommandListImmediate& RHICmdList) {
 		if (!GEngine->PreRenderDelegate.IsBoundToObject(this))
@@ -297,6 +308,7 @@ void AParticleWaveManager::UpdateParticle_GPU(float DeltaTime) {
 
 }
 
+#if CPU_PARTICLE_VERSION
 void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 
 	CurFrame = (CurFrame + 1ul) & 1ul;
@@ -451,6 +463,7 @@ void AParticleWaveManager::UpdateParticle(float DeltaTime) {
 	);
 
 }
+#endif
 
 #if WITH_EDITOR
 static FName Name_PlaneSize = GET_MEMBER_NAME_CHECKED(AParticleWaveManager, PlaneSize);
@@ -491,36 +504,3 @@ void AParticleWaveManager::PostEditChangeProperty(FPropertyChangedEvent& Propert
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 #endif
-
-//{
-//uint32 TestIndex = 0;
-//CurFrameVectorField[TestIndex++] = FLinearColor::Red.R;
-//CurFrameVectorField[TestIndex++] = FLinearColor::Red.G;
-//CurFrameVectorField[TestIndex++] = FLinearColor::Red.B;
-//CurFrameVectorField[TestIndex++] = 0.f;
-//
-//CurFrameVectorField[TestIndex++] = FLinearColor::Green.R;
-//CurFrameVectorField[TestIndex++] = FLinearColor::Green.G;
-//CurFrameVectorField[TestIndex++] = FLinearColor::Green.B;
-//CurFrameVectorField[TestIndex++] = 0.f;
-//
-//CurFrameVectorField[TestIndex++] = FLinearColor::Blue.R;
-//CurFrameVectorField[TestIndex++] = FLinearColor::Blue.G;
-//CurFrameVectorField[TestIndex++] = FLinearColor::Blue.B;
-//CurFrameVectorField[TestIndex++] = 0.f;
-//
-//CurFrameVectorField[TestIndex++] = FLinearColor::Black.R;
-//CurFrameVectorField[TestIndex++] = FLinearColor::Black.G;
-//CurFrameVectorField[TestIndex++] = FLinearColor::Black.B;
-//CurFrameVectorField[TestIndex++] = 0.f;
-//
-//VectorFieldTex->UpdateTextureRegions(
-//	0,
-//	1,
-//	UpdateTextureRegion2D.Get(),
-//	sizeof(float) * 4 * VectorFieldSize.X,
-//	16,
-//	reinterpret_cast<uint8*>(CurFrameVectorField.GetData())
-//);
-//
-//return;}

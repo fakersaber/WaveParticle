@@ -10,7 +10,7 @@
 class UProceduralMeshComponent;
 class AWaveParticleTile;
 class UMaterialInterface;
-class UTextureRenderTarget;
+class UTextureRenderTarget2D;
 class FWaveParticle_GPU;
 
 struct FUpdateTextureRegion2D;
@@ -84,11 +84,11 @@ public:
 	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
 		float Beta;
 
-	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
-		UTexture2D* VectorFieldTex;
+	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
+		UTextureRenderTarget2D* VectorFieldTex;
 
-	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
-		UTexture2D* NormalMapTex;
+	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
+		UTextureRenderTarget2D* NormalMapTex;
 
 	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
 		float GridSize;
