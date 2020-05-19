@@ -233,7 +233,7 @@ void AParticleWaveManager::InitWaveParticle() {
 				UStaticMeshComponent* MeshComponent = NewActor->FindComponentByClass<UStaticMeshComponent>();
 
 				//Procudual Mesh version
-				//NewActor->GeneratorWaveMesh(GridSize, PlaneSize);
+				//NewActor->GeneratorYLODMesh(GridSize, PlaneSize);
 				//UProceduralMeshComponent* MeshComponent = NewActor->FindComponentByClass<UProceduralMeshComponent>();
 
 				MeshComponent->SetMaterial(0, WaterMaterial);

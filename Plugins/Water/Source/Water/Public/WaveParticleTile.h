@@ -33,6 +33,8 @@ public:
 
 	void GeneratorStaticMesh(UStaticMesh* MeshAsset);
 
+	void GeneratorYLODMesh(uint32 GridSize, FIntPoint PlaneSize);
+
 public:
 	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
 		UStaticMeshComponent* WaveMesh;
