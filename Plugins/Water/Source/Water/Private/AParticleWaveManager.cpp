@@ -13,7 +13,7 @@
 #include "WaveParticleTile.h"
 #include "WaveParticleCS.h"
 
-#include "Engine/TextureRenderTarget.h"
+#include "Engine/TextureRenderTarget2D.h"
 
 
 #define CPU_PARTICLE_VERSION 0
@@ -285,6 +285,7 @@ void AParticleWaveManager::UpdateParticle_GPU(float DeltaTime) {
 	//保证一次数据的完整性
 	FUpdateFieldStruct TempRenderData;
 	FMemory::Memcpy(&TempRenderData, AParticleWaveManager::UpdateParticleData.Get(), sizeof(FUpdateFieldStruct));
+
 
 	UTextureRenderTarget2D* CopyVectorFieldTexPtr = VectorFieldTex;
 	UTextureRenderTarget2D* CopyNormal = NormalMapTex;

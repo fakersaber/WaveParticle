@@ -35,6 +35,24 @@ public:
 
 	void GeneratorYLODMesh(uint32 GridSize, FIntPoint PlaneSize);
 
+	void GeneratorYLODMesh_2(uint32 GridSize, FIntPoint PlaneSize);
+
+private:
+
+	void HandleLODStart(uint32 PlaneSize, const uint32 CurColumn, TArray<int32>& IndexBuffer);
+	void HandleLODEnd(uint32 PlaneSize, const uint32 CurColumn, TArray<int32>& IndexBuffer);
+	void HandleTopEdgeAndTrigle(uint32 PlaneSize, const uint32 CurRow, TArray<int32>& IndexBuffer);
+	void HandleDownEdgeAndTrigle(uint32 PlaneSize, const uint32 CurRow, TArray<int32>& IndexBuffer);
+	void HandleLeftTrigle(uint32 PlaneSize, const uint32 CurColumn, TArray<int32>& IndexBuffer);
+	void HandleRightTrigle(uint32 PlaneSize, const uint32 CurColumn, TArray<int32>& IndexBuffer);
+
+
+	void HandleMiddle(uint32 PlaneSize, const uint32 CurColumn, const uint32 CurRow, TArray<int32>& IndexBuffer);
+
+
+
+	uint32 GetCenterOffset(uint32 PlaneSize, uint32 CurColumn);
+
 public:
 	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
 		UStaticMeshComponent* WaveMesh;

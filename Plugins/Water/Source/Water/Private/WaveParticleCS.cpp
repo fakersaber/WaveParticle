@@ -347,6 +347,12 @@ void FWaveParticle_GPU::UpdateWaveParticleFiled(FRHICommandListImmediate& RHICmd
 void FWaveParticle_GPU::InitWaveParticlePosResource(const FIntPoint& FieldSize) {
 	WaveParticlePosBuffer->Initialize(sizeof(FVector2D), SharedParticlePos->Num(), EPixelFormat::PF_G32R32F, BUF_Dynamic);
 	WaveParticleFieldBuffer->Initialize(sizeof(uint32), FieldSize.X * 3, FieldSize.Y, EPixelFormat::PF_R32_SINT);
-	WaveParticleFieldComPression->Initialize(sizeof(float) * 4, FieldSize.X, FieldSize.Y, EPixelFormat::PF_A32B32G32R32F);
-	WaveParticleNormal->Initialize(sizeof(float) * 4, FieldSize.X, FieldSize.Y, EPixelFormat::PF_A32B32G32R32F);
+
+	//WaveParticleFieldComPression->Initialize(sizeof(float) * 4, FieldSize.X, FieldSize.Y, EPixelFormat::PF_A32B32G32R32F);
+	//WaveParticleNormal->Initialize(sizeof(float) * 4, FieldSize.X, FieldSize.Y, EPixelFormat::PF_A32B32G32R32F);
+
+
+	////VectorFieldÑ¹Ëõµ½16f
+	WaveParticleFieldComPression->Initialize(sizeof(float) * 2, FieldSize.X, FieldSize.Y, EPixelFormat::PF_FloatRGBA);
+	WaveParticleNormal->Initialize(sizeof(float) * 2, FieldSize.X, FieldSize.Y, EPixelFormat::PF_FloatRGBA);
 }
