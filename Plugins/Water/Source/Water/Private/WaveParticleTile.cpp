@@ -5,6 +5,7 @@
 #include "ProceduralMeshComponent.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Engine/StaticMesh.h"
+#include "WaveMeshComponent.h"
 
 
 #define _LOD1 0
@@ -16,7 +17,7 @@ AWaveParticleTile::AWaveParticleTile()
 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
 
-	WaveMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WaveMesh"));
+	WaveMesh = CreateDefaultSubobject<UWaveMeshComponent>(TEXT("WaveMesh"));
 
 	//ProceduralWaveMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("ProceduralWaveMesh"));
 }

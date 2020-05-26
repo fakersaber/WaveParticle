@@ -7,6 +7,7 @@
 #include "WaveParticleTile.generated.h"
 
 class UProceduralMeshComponent;
+class UWaveMeshComponent;
 
 UCLASS()
 class WATER_API AWaveParticleTile : public AActor
@@ -55,7 +56,7 @@ private:
 
 public:
 	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
-		UStaticMeshComponent* WaveMesh;
+		UWaveMeshComponent* WaveMesh;
 
 	UPROPERTY(VisibleAnywhere, Category = WaveParticleParam)
 		UProceduralMeshComponent* ProceduralWaveMesh;
