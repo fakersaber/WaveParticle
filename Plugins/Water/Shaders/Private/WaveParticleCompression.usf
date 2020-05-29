@@ -67,6 +67,7 @@ void CompressionFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         float(VectorField[Top_Z]) / 1048575.f
     );
     
+    //dx与dy应该为一个向量场单位所占quad大小
     float3 dx = float3(1.f, 0.f, 0.f);
     float3 dy = float3(0.f, 1.f, 0.f);
 
@@ -83,6 +84,12 @@ void CompressionFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float3 normal = LeftNormal + RightNormal + DownNormal + TopNormal;
     normal = length(normal) < 1e-8 ? float3(0.f, 0.f, 0.f) : normalize(normal);
 
-    NormalTarget[DispatchThreadID.xy] = float4(normal, 0.f);
+    
+    float2 dDx = RightPlacementWithHeight.xy - LeftPlacementWithHeight.xy;
+    float2 dDy = DownPlacementWithHeight.xy - TopPlacementWithHeight.xy;
+    float J = (1.f + dDx.x) * (1.f + dDy.y) - dDx.y * dDy.x;
+    
+    
+    NormalTarget[DispatchThreadID.xy] = float4(normal, J);
     CompressionTarget[DispatchThreadID.xy] = float4(CurPlacementWithHeight,0.f);
 }
