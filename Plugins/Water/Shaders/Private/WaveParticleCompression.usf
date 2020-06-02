@@ -71,6 +71,8 @@ void CompressionFieldCS(uint3 DispatchThreadID : SV_DispatchThreadID)
     float3 dx = float3(1.f, 0.f, 0.f);
     float3 dy = float3(0.f, 1.f, 0.f);
 
+    
+    //考虑到中心点有自己的placement，不适用梯度计算方式
     float3 LeftVec = -dx + LeftPlacementWithHeight - CurPlacementWithHeight;
     float3 RightVec = dx + RightPlacementWithHeight - CurPlacementWithHeight;
     float3 DownVec = dy + DownPlacementWithHeight - CurPlacementWithHeight;
