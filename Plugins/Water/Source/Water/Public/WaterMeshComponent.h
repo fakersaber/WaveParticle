@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/StaticMeshComponent.h"
-#include "WaveMeshComponent.generated.h"
+#include "WaterMeshComponent.generated.h"
 
 /**
  * 

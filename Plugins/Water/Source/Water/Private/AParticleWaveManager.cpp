@@ -12,6 +12,7 @@
 
 #include "WaveParticleTile.h"
 #include "WaveParticleCS.h"
+#include "WaterMeshManager.h"
 
 #include "Engine/TextureRenderTarget2D.h"
 
@@ -216,63 +217,42 @@ void AParticleWaveManager::InitWaveParticle() {
 	//Spawn Actor
 	{
 
-		FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
+		WaterMeshManager = MakeShared<FWaterInstanceMeshManager>(PlaneSize.X, GridSize, TileSize.X, GetActorLocation());
 
-		FVector2D HalfTileMeshSize(TileMeshSize * 0.5f);
+		WaterMeshManager->Initial();
 
-		FVector2D Center(TileSize.X * HalfTileMeshSize.X, TileSize.Y * HalfTileMeshSize.Y);
+		//FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
 
-		for (int y = 0; y < TileSize.Y; ++y) {
-			for (int x = 0; x < TileSize.X; ++x) {
+		//FVector2D HalfTileMeshSize(TileMeshSize * 0.5f);
 
-				FVector PositionOffset(FVector2D(x * TileMeshSize.X + HalfTileMeshSize.X, y * TileMeshSize.Y + HalfTileMeshSize.Y) - Center, 0.f);
-				auto NewActor = GetWorld()->SpawnActor<AWaveParticleTile>(WaveClassType, GetActorLocation() + PositionOffset, GetActorRotation());
+		//FVector2D Center(TileSize.X * HalfTileMeshSize.X, TileSize.Y * HalfTileMeshSize.Y);
 
-				//staic mesh version
-				NewActor->GeneratorStaticMesh(WaterMesh);
-				UStaticMeshComponent* MeshComponent = NewActor->FindComponentByClass<UStaticMeshComponent>();
+		//for (int y = 0; y < TileSize.Y; ++y) {
+		//	for (int x = 0; x < TileSize.X; ++x) {
 
-				//Procudual Mesh version
-				//NewActor->GeneratorYLODMesh(GridSize, PlaneSize);
-				//UProceduralMeshComponent* MeshComponent = NewActor->FindComponentByClass<UProceduralMeshComponent>();
+		//		FVector PositionOffset(FVector2D(x * TileMeshSize.X + HalfTileMeshSize.X, y * TileMeshSize.Y + HalfTileMeshSize.Y) - Center, 0.f);
+		//		auto NewActor = GetWorld()->SpawnActor<AWaveParticleTile>(WaveClassType, GetActorLocation() + PositionOffset, GetActorRotation());
 
-				MeshComponent->SetMaterial(0, WaterMaterial);
+		//		//staic mesh version
+		//		NewActor->GeneratorStaticMesh(WaterMesh);
+		//		UStaticMeshComponent* MeshComponent = NewActor->FindComponentByClass<UStaticMeshComponent>();
 
-				MeshComponent->SetCustomPrimitiveDataVector2(0, FVector2D(FMath::Frac(AParticleWaveManager::UVScale1.X * x), FMath::Frac(AParticleWaveManager::UVScale1.Y * y)));
-				MeshComponent->SetCustomPrimitiveDataVector2(2, FVector2D(FMath::Frac(AParticleWaveManager::UVScale2.X * x), FMath::Frac(AParticleWaveManager::UVScale2.Y * y)));
-				MeshComponent->SetCustomPrimitiveDataVector2(4, FVector2D(FMath::Frac(AParticleWaveManager::UVScale3.X * x), FMath::Frac(AParticleWaveManager::UVScale3.Y * y)));
+		//		//Procudual Mesh version
+		//		//NewActor->GeneratorYLODMesh(GridSize, PlaneSize);
+		//		//UProceduralMeshComponent* MeshComponent = NewActor->FindComponentByClass<UProceduralMeshComponent>();
 
-				//UMaterialInstanceDynamic* DynamicMaterialInstance = MeshComponent->CreateAndSetMaterialInstanceDynamicFromMaterial(0, WaterMaterial);
-				//DynamicMaterialInstance->SetTextureParameterValue("VectorFiled", VectorFieldTex);
-				//DynamicMaterialInstance->SetTextureParameterValue("FieldNormal", NormalMapTex);
+		//		MeshComponent->SetMaterial(0, WaterMaterial);
 
-				////2^-1 2^-2 2^-3 均可以精确表示
-				//float EdgeValueX1 = FMath::Frac(AParticleWaveManager::UVScale1.X * x);
-				//float EdgeValueY1 = FMath::Frac(AParticleWaveManager::UVScale1.Y * y);
-
-				//float EdgeValueX2 = FMath::Frac(AParticleWaveManager::UVScale2.X * x);
-				//float EdgeValueY2 = FMath::Frac(AParticleWaveManager::UVScale2.Y * y);
-
-				//float EdgeValueX3 = FMath::Frac(AParticleWaveManager::UVScale3.X * x);
-				//float EdgeValueY3 = FMath::Frac(AParticleWaveManager::UVScale3.Y * y);
+		//		MeshComponent->SetCustomPrimitiveDataVector2(0, FVector2D(FMath::Frac(AParticleWaveManager::UVScale1.X * x), FMath::Frac(AParticleWaveManager::UVScale1.Y * y)));
+		//		MeshComponent->SetCustomPrimitiveDataVector2(2, FVector2D(FMath::Frac(AParticleWaveManager::UVScale2.X * x), FMath::Frac(AParticleWaveManager::UVScale2.Y * y)));
+		//		MeshComponent->SetCustomPrimitiveDataVector2(4, FVector2D(FMath::Frac(AParticleWaveManager::UVScale3.X * x), FMath::Frac(AParticleWaveManager::UVScale3.Y * y)));
 
 
-				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX1", EdgeValueX1);
-				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY1", EdgeValueY1);
-
-				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX2", EdgeValueX2);
-				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY2", EdgeValueY2);
-
-				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueX3", EdgeValueX3);
-				//DynamicMaterialInstance->SetScalarParameterValue("EdgeValueY3", EdgeValueY3);
-
-				WaveParticleTileContainer.Emplace(NewActor);
-				NewActor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
-			}
-		}
+		//		WaveParticleTileContainer.Emplace(NewActor);
+		//		NewActor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+		//	}
+		//}
 	}
-	//单位VectorField表示的虚幻长度
-	TILE_SIZE_X2 = 2.f * PlaneSize.X * GridSize / 100.f / VectorFieldSize.X;
 
 }
 
@@ -294,10 +274,10 @@ void AParticleWaveManager::UpdateParticle_GPU(float DeltaTime) {
 		if (!GEngine->PreRenderDelegate.IsBoundToObject(this))
 		{
 			GEngine->PreRenderDelegate.AddWeakLambda(this, [FeatureLevel, WaveParticleShared, this, TempRenderData, CopyVectorFieldTexPtr, CopyNormal]() {
-				FRHICommandListImmediate& RHICmdList = GetImmediateCommandList_ForRenderCommand();
+				FRHICommandListImmediate& RHIImmediateCmdList = GetImmediateCommandList_ForRenderCommand();
 				WaveParticleShared->UpdateWaveParticlePos(this->GetWorld()->DeltaTimeSeconds);
 				WaveParticleShared->UpdateWaveParticleFiled(
-					RHICmdList,
+					RHIImmediateCmdList,
 					TempRenderData,
 					FeatureLevel,
 					CopyVectorFieldTexPtr,

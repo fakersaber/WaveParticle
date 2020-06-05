@@ -5,7 +5,7 @@
 #include "ProceduralMeshComponent.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Engine/StaticMesh.h"
-#include "WaveMeshComponent.h"
+#include "WaterMeshComponent.h"
 
 
 #define _LOD1 0
