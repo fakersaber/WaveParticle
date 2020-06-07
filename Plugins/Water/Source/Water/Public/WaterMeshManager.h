@@ -2,12 +2,29 @@
 
 #include "CoreMinimal.h"
 
-class WaterInstanceMeshComponent;
+class UWaterInstanceMeshComponent;
 class FWaterInstanceQuadTree;
+struct FConvexVolume;
+
 
 struct WaterMeshInstanceNodeData {
-	uint32 CalclateLODIndex() {}
-	uint32 CurLodIndex;
+	WaterMeshInstanceNodeData() 
+		:
+		bIsFading(true),
+		LastLodIndex(0),
+		InstanceIndex(0)
+	{
+
+	}
+
+	uint8 CalclateLODIndex() {
+		return 0;
+	}
+
+	bool bIsFading;
+
+	uint8 LastLodIndex;
+
 	uint32 InstanceIndex;
 };
 
@@ -16,14 +33,23 @@ struct WaterMeshInstanceNodeData {
 class FWaterInstanceMeshManager {
 public:
 	FWaterInstanceMeshManager(uint32 PlaneSize, float GridSize, uint32 TileSize, FVector CenterPos);
+
 	~FWaterInstanceMeshManager();
 
 	void Initial();
 
+	void MeshCulling(const FMatrix& ProjectMatrix);
+
+	const FConvexVolume& GetViewFrustum() const;
+
+	const TArray<UWaterInstanceMeshComponent*>& GetWaterMeshLODs() const;
+
 private:
 	TSharedPtr<FWaterInstanceQuadTree> InstanceMeshTree;
 
-	TArray<WaterInstanceMeshComponent*> WaterLODs;
+	TArray<UWaterInstanceMeshComponent*> WaterMeshLODs;;
+
+	FConvexVolume ViewFrustum;
 };
 
 
@@ -40,13 +66,10 @@ public:
 
 	~FWaterInstanceQuadTree();
 
-	//空间复杂度：O(n * log4(n))
-	//时间复杂度：最好O(1), 最坏O((4n - 1)/3)
-	static void FrustumCull(FWaterInstanceQuadTree* RootNode);
+	static void FrustumCull(FWaterInstanceQuadTree* RootNode, FWaterInstanceMeshManager* ManagerPtr);
 
 	static void InitWaterMeshQuadTree(FWaterInstanceQuadTree* RootNode);
 
-	//判断是否叶子节点
 	static bool bIsLeafNode(FWaterInstanceQuadTree* CurNode);
 
 	void Split();
@@ -54,16 +77,17 @@ public:
 
 
 private:
-	//每个节点存储位置即可当前的BoundingBox,可以只存储位置，但为了拓展性直接存储Box
 	FBoxSphereBounds NodeBound;
 
-	// Sub Node
 	FWaterInstanceQuadTree* SubTrees[4];
 
-	//当前节点包含的所有实际数据,包括子节点数据
-	TArray<WaterMeshInstanceNodeData> DataNodes;
+	//当前节点包含的所有实际数据,包括子节点数据,只存储Index
+	TArray<uint32> NodesIndeces;
 
 
 public:
 	static FVector MinBound;
+
+	static TMap<uint32, WaterMeshInstanceNodeData> WaterMeshNodeData;
+	static TMap<uint32, uint32> InstanceIdToNodeIndex;
 };
