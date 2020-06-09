@@ -7,12 +7,13 @@ class FWaterInstanceQuadTree;
 struct FConvexVolume;
 
 
-struct WaterMeshInstanceNodeData {
-	WaterMeshInstanceNodeData() 
+struct FWaterMeshLeafNodeData {
+	explicit FWaterMeshLeafNodeData(const FTransform& RelativeRT) 
 		:
 		bIsFading(true),
-		LastLodIndex(0),
-		InstanceIndex(0)
+		LastLodIndex(INDEX_NONE),
+		InstanceIndex(INDEX_NONE),
+		RelativeTransform(RelativeRT)
 	{
 
 	}
@@ -26,6 +27,8 @@ struct WaterMeshInstanceNodeData {
 	uint8 LastLodIndex;
 
 	uint32 InstanceIndex;
+
+	FTransform RelativeTransform;
 };
 
 
@@ -36,7 +39,7 @@ public:
 
 	~FWaterInstanceMeshManager();
 
-	void Initial();
+	void Initial(const FTransform& LocalToWorld);
 
 	void MeshCulling(const FMatrix& ProjectMatrix);
 
@@ -44,12 +47,20 @@ public:
 
 	const TArray<UWaterInstanceMeshComponent*>& GetWaterMeshLODs() const;
 
+	TArray<TMap<uint32, uint32>>& GetInstanceIdToNodeIndex();
+
+	TMap<uint32, FWaterMeshLeafNodeData>& GetWaterMeshNodeData();
+
 private:
 	TSharedPtr<FWaterInstanceQuadTree> InstanceMeshTree;
 
-	TArray<UWaterInstanceMeshComponent*> WaterMeshLODs;;
-
 	FConvexVolume ViewFrustum;
+
+	TArray<UWaterInstanceMeshComponent*> WaterMeshLODs;
+
+	TArray<TMap<uint32, uint32>> InstanceIdToNodeIndex;
+
+	TMap<uint32, FWaterMeshLeafNodeData> WaterMeshNodeData;
 };
 
 
@@ -68,12 +79,31 @@ public:
 
 	static void FrustumCull(FWaterInstanceQuadTree* RootNode, FWaterInstanceMeshManager* ManagerPtr);
 
-	static void InitWaterMeshQuadTree(FWaterInstanceQuadTree* RootNode);
+	void InitWaterMeshQuadTree(FWaterInstanceMeshManager* ManagerPtr, int32& LeafNodeIndex);
 
-	static bool bIsLeafNode(FWaterInstanceQuadTree* CurNode);
+	void MeshTransformBy(const FTransform LocalToWorld);
+
+	bool bIsLeafNode();
 
 	void Split();
 
+private:
+
+	static void RemoveInstanceNode
+	(
+		FWaterMeshLeafNodeData* RemoveDataNode,
+		const TArray<UWaterInstanceMeshComponent*>& InstanceLODContainer,
+		TArray<TMap<uint32, uint32>>& InstanceIdToNodeIndex,
+		TMap<uint32, FWaterMeshLeafNodeData>& WaterMeshNodeData
+	);
+	
+	static void AddInstanceNode
+	(
+		uint32 NodeIndex, uint8 CurLODIndex, 
+		FWaterMeshLeafNodeData* LeafDataNode,
+		const TArray<UWaterInstanceMeshComponent*>& InstanceLODContainer, 
+		TArray<TMap<uint32, uint32>>& InstanceIdToNodeIndex
+	);
 
 
 private:
@@ -81,13 +111,10 @@ private:
 
 	FWaterInstanceQuadTree* SubTrees[4];
 
-	//当前节点包含的所有实际数据,包括子节点数据,只存储Index
+	//储存当前节点包括子节点的NodeIndex
 	TArray<uint32> NodesIndeces;
 
 
 public:
 	static FVector MinBound;
-
-	static TMap<uint32, WaterMeshInstanceNodeData> WaterMeshNodeData;
-	static TMap<uint32, uint32> InstanceIdToNodeIndex;
 };

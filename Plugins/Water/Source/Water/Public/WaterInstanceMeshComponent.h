@@ -15,7 +15,7 @@ class WATER_API UWaterInstanceMeshComponent : public UInstancedStaticMeshCompone
 	GENERATED_BODY()
 
 public:
-    virtual bool UWaterInstanceMeshComponent::RemoveInstance(int32 InstanceIndex) override;
+    virtual bool RemoveInstance(int32 InstanceIndex) override;
 
-	virtual int32 UWaterInstanceMeshComponent::AddInstance(const FTransform& InstanceTransform) override;
+	virtual int32 AddInstance(const FTransform& InstanceTransform) override;
 };

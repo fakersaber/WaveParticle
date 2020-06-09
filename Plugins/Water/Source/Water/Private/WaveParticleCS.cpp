@@ -337,8 +337,8 @@ void FWaveParticle_GPU::UpdateWaveParticleFiled(FRHICommandListImmediate& RHICmd
 
 	//#TODO: 可修改UTexture2D来避免复制，在InitRHI()时带上对应标志
 
-	FTexture2DRHIRef MaterialFieldTextureRHI = reinterpret_cast<FTextureRenderTarget2DResource*>(CopyVectorFieldTexPtr->Resource)->GetTextureRHI();
-	FTexture2DRHIRef MaterialNormalTextureRHI = reinterpret_cast<FTextureRenderTarget2DResource*>(CopyNormal->Resource)->GetTextureRHI();
+	FTexture2DRHIRef MaterialFieldTextureRHI = static_cast<FTextureRenderTarget2DResource*>(CopyVectorFieldTexPtr->Resource)->GetTextureRHI();
+	FTexture2DRHIRef MaterialNormalTextureRHI = static_cast<FTextureRenderTarget2DResource*>(CopyNormal->Resource)->GetTextureRHI();
 	RHICmdList.CopyTexture(WaveParticleFieldComPression->Buffer, MaterialFieldTextureRHI, FRHICopyTextureInfo());
 	RHICmdList.CopyTexture(WaveParticleNormal->Buffer, MaterialNormalTextureRHI, FRHICopyTextureInfo());
 }

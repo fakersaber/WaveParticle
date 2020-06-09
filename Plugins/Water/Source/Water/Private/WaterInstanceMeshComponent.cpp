@@ -3,7 +3,9 @@
 
 #include "WaterInstanceMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+
 #include "StaticMeshResources.h"
+#include "Components/InstancedStaticMeshComponent.h"
 
 
 bool UWaterInstanceMeshComponent::RemoveInstance(int32 InstanceIndex)
@@ -45,7 +47,8 @@ bool UWaterInstanceMeshComponent::RemoveInstance(int32 InstanceIndex)
 	}
 
 	// Force recreation of the render data
-	InstanceUpdateCmdBuffer.Edit();
+	InstanceUpdateCmdBuffer.NumEdits += 1;
+
 	MarkRenderStateDirty();
 	return true;
 }
@@ -66,7 +69,8 @@ int32 UWaterInstanceMeshComponent::AddInstance(const FTransform& InstanceTransfo
 
 	PartialNavigationUpdate(PerInstanceSMData.Num());
 
-	InstanceUpdateCmdBuffer.Edit();
+	InstanceUpdateCmdBuffer.NumEdits += 1;
+
 	MarkRenderStateDirty();
 
 	return PerInstanceSMData.Num();
