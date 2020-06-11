@@ -18,10 +18,6 @@ struct FWaterMeshLeafNodeData {
 
 	}
 
-	uint8 CalclateLODIndex() {
-		return 0;
-	}
-
 	bool bIsFading;
 
 	uint8 LastLodIndex;
@@ -39,9 +35,9 @@ public:
 
 	~FWaterInstanceMeshManager();
 
-	void Initial(const FTransform& LocalToWorld);
+	void Initial(const FTransform& LocalToWorld, const TArray<UStaticMesh*>& LodAsset, uint32 InstanceCount, AActor* OuterActor, UMaterialInterface* WaterMaterial);
 
-	void MeshCulling(const FMatrix& ProjectMatrix);
+	void MeshCulling(ULocalPlayer* LocalPlayer);
 
 	const FConvexVolume& GetViewFrustum() const;
 
@@ -50,6 +46,8 @@ public:
 	TArray<TMap<uint32, uint32>>& GetInstanceIdToNodeIndex();
 
 	TMap<uint32, FWaterMeshLeafNodeData>& GetWaterMeshNodeData();
+
+	//const FMatrix& GetCurProjMatrix() const;
 
 private:
 	TSharedPtr<FWaterInstanceQuadTree> InstanceMeshTree;
@@ -61,6 +59,8 @@ private:
 	TArray<TMap<uint32, uint32>> InstanceIdToNodeIndex;
 
 	TMap<uint32, FWaterMeshLeafNodeData> WaterMeshNodeData;
+
+	//FMatrix ProjMatrix;
 };
 
 
@@ -77,7 +77,7 @@ public:
 
 	~FWaterInstanceQuadTree();
 
-	static void FrustumCull(FWaterInstanceQuadTree* RootNode, FWaterInstanceMeshManager* ManagerPtr);
+	static void FrustumCull(FWaterInstanceQuadTree* RootNode, FWaterInstanceMeshManager* ManagerPtr, const FMatrix& ProjMatrix, const FVector& ViewOrigin);
 
 	void InitWaterMeshQuadTree(FWaterInstanceMeshManager* ManagerPtr, int32& LeafNodeIndex);
 
@@ -86,6 +86,8 @@ public:
 	bool bIsLeafNode();
 
 	void Split();
+
+	uint8 CalclateLODIndex(const FMatrix& ProjMatrix, const FVector& ViewOrigin);
 
 private:
 

@@ -13,8 +13,15 @@
 #include "WaveParticleTile.h"
 #include "WaveParticleCS.h"
 #include "WaterMeshManager.h"
+#include "WaterInstanceMeshComponent.h"
 
 #include "Engine/TextureRenderTarget2D.h"
+#include "GameFramework/PlayerController.h"
+#include "Camera/CameraTypes.h"
+#include "Camera/PlayerCameraManager.h"
+
+
+
 
 
 #define CPU_PARTICLE_VERSION 0
@@ -66,7 +73,7 @@ void AParticleWaveManager::BeginPlay()
 void AParticleWaveManager::Tick(float DeltaTime) {
 	Super::Tick(DeltaTime);
 
-	if (WaveClassType && WaterMaterial && WaterMesh && VectorFieldTex && NormalMapTex) {
+	if (WaveClassType && WaterMaterial && WaterMeshs.Num() == 3 && VectorFieldTex && NormalMapTex) {
 		if (!bHasInit) {
 			ClearResource();
 			InitWaveParticle();
@@ -77,6 +84,9 @@ void AParticleWaveManager::Tick(float DeltaTime) {
 #else
 		UpdateParticle_GPU(DeltaTime);
 #endif
+		ULocalPlayer* LocalPlayer = GetWorld()->GetGameInstance()->GetLocalPlayerByIndex(0);
+
+		WaterMeshManager->MeshCulling(LocalPlayer);
 	}
 }
 
@@ -107,6 +117,9 @@ void AParticleWaveManager::ClearResource() {
 	WaveParticleTileContainer.Reset();
 	ParticlePosContainer.Reset();
 	ParticleSpeedContainer.Reset();
+
+
+	WaterMeshManager.Reset();
 }
 
 void AParticleWaveManager::Destroyed() {
@@ -219,7 +232,7 @@ void AParticleWaveManager::InitWaveParticle() {
 
 		WaterMeshManager = MakeShared<FWaterInstanceMeshManager>(PlaneSize.X, GridSize, TileSize.X, GetActorLocation());
 
-		WaterMeshManager->Initial(GetActorTransform());
+		WaterMeshManager->Initial(GetActorTransform(), WaterMeshs, TileSize.X * TileSize.Y, this, WaterMaterial);
 
 		//FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
 

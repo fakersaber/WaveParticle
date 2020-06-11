@@ -11,9 +11,9 @@ class UProceduralMeshComponent;
 class AWaveParticleTile;
 class UMaterialInterface;
 class UTextureRenderTarget2D;
+
 class FWaveParticle_GPU;
 class FWaterInstanceMeshManager;
-
 struct FUpdateTextureRegion2D;
 struct FUpdateFieldStruct;
 
@@ -103,8 +103,11 @@ public:
 	UPROPERTY(EditAnywhere,Category = WaveParticleParam)
 		TSubclassOf<AWaveParticleTile> WaveClassType;
 
+	//UPROPERTY(EditAnywhere, Category = WaveParticleParam)
+	//	UStaticMesh* WaterMesh;
+	
 	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
-		UStaticMesh* WaterMesh;
+		TArray<UStaticMesh*> WaterMeshs;
 
 private:
 	

@@ -16,7 +16,7 @@ bool UWaterInstanceMeshComponent::RemoveInstance(int32 InstanceIndex)
 	// remove instance
 	if (PerInstanceSMData.IsValidIndex(InstanceIndex))
 	{
-		PerInstanceSMData.RemoveAtSwap(InstanceIndex,1,false);
+		PerInstanceSMData.RemoveAtSwap(InstanceIndex, 1, false);
 	}
 
 #if WITH_EDITOR
@@ -54,11 +54,15 @@ bool UWaterInstanceMeshComponent::RemoveInstance(int32 InstanceIndex)
 }
 
 
-int32 UWaterInstanceMeshComponent::AddInstance(const FTransform& InstanceTransform){
+int32 UWaterInstanceMeshComponent::AddInstance(const FTransform& InstanceTransform) {
+
+	//由于优化过后使用的是NonShrinking,所以不是每次Add都需要分配内存
 
 	FInstancedStaticMeshInstanceData* NewInstanceData = new (PerInstanceSMData) FInstancedStaticMeshInstanceData();
 
 	NewInstanceData->Transform = InstanceTransform.ToMatrixWithScale();
+
+
 
 #if WITH_EDITOR
 	if (SelectedInstances.Num())
@@ -74,4 +78,12 @@ int32 UWaterInstanceMeshComponent::AddInstance(const FTransform& InstanceTransfo
 	MarkRenderStateDirty();
 
 	return PerInstanceSMData.Num();
+}
+
+FPrimitiveSceneProxy* UWaterInstanceMeshComponent::CreateSceneProxy(){
+
+
+
+
+	return Super::CreateSceneProxy();
 }

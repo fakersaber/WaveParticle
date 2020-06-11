@@ -1,6 +1,9 @@
 #include "WaterMeshManager.h"
 #include "WaterInstanceMeshComponent.h"
 #include "ConvexVolume.h"
+#include "Kismet/GameplayStatics.h"
+#include "Engine/LocalPlayer.h"
+#include "GameFramework/PlayerController.h"
 
 #define INSTANCE_COUNT 1024
 
@@ -24,7 +27,7 @@ FWaterInstanceQuadTree::~FWaterInstanceQuadTree() {
 
 }
 
-FORCEINLINE bool IntersectBox8Plane(const FVector& InOrigin, const FVector& InExtent, const FPlane* PermutedPlanePtr)
+bool IntersectBox8Plane(const FVector& InOrigin, const FVector& InExtent, const FPlane* PermutedPlanePtr)
 {
 	// this removes a lot of the branches as we know there's 8 planes
 	// copied directly out of ConvexVolume.cpp
@@ -86,13 +89,18 @@ FORCEINLINE bool IntersectBox8Plane(const FVector& InOrigin, const FVector& InEx
 
 //空间复杂度：O(n * log4(n))
 //时间复杂度：最好O(1), 最坏O((4n - 1)/3)
-void FWaterInstanceQuadTree::FrustumCull(FWaterInstanceQuadTree* RootNode, FWaterInstanceMeshManager* ManagerPtr) {
-
+void FWaterInstanceQuadTree::FrustumCull(
+	FWaterInstanceQuadTree* RootNode, 
+	FWaterInstanceMeshManager* ManagerPtr,
+	const FMatrix& ProjMatrix,
+	const FVector& ViewOrigin
+) 
+{
 	const FPlane* PermutedPlanePtr = ManagerPtr->GetViewFrustum().PermutedPlanes.GetData();
 	const TArray<UWaterInstanceMeshComponent*>& InstanceLODContainer = ManagerPtr->GetWaterMeshLODs();
 	bool bIsCulling = IntersectBox8Plane(RootNode->NodeBound.Origin, RootNode->NodeBound.BoxExtent, PermutedPlanePtr);
 
-	if (bIsCulling) {
+	if (!bIsCulling) {
 		for (const uint32 RemoveNodeIndex : RootNode->NodesIndeces) {
 			FWaterMeshLeafNodeData* RemoveDataNode = ManagerPtr->GetWaterMeshNodeData().Find(RemoveNodeIndex);
 			check(RemoveDataNode);
@@ -100,21 +108,25 @@ void FWaterInstanceQuadTree::FrustumCull(FWaterInstanceQuadTree* RootNode, FWate
 				continue;
 			}
 			RemoveInstanceNode(RemoveDataNode, InstanceLODContainer, ManagerPtr->GetInstanceIdToNodeIndex(), ManagerPtr->GetWaterMeshNodeData());
+
+			RemoveDataNode->bIsFading = true;
 		}
 		return;
 	}
 
 	for (FWaterInstanceQuadTree* NodePtr : RootNode->SubTrees) {
 		if (NodePtr != nullptr) {
-			FrustumCull(NodePtr, ManagerPtr);
+			FrustumCull(NodePtr, ManagerPtr, ProjMatrix, ViewOrigin);
 		}
 	}
 
 	//通过测试的节点如果是最小粒度
 	FVector2D CurBoundSize = FVector2D(RootNode->NodeBound.BoxExtent.X, RootNode->NodeBound.BoxExtent.Y);
 	if (FMath::IsNearlyEqual(CurBoundSize.X, MinBound.X) && FMath::IsNearlyEqual(CurBoundSize.Y, MinBound.Y)) {
+
 		FWaterMeshLeafNodeData* LeafDataNode = ManagerPtr->GetWaterMeshNodeData().Find(RootNode->NodesIndeces[0]);
-		uint8 CurLODIndex = LeafDataNode->CalclateLODIndex();
+
+		uint8 CurLODIndex = RootNode->CalclateLODIndex(ProjMatrix, ViewOrigin);
 
 		//1. LastFrame是Culling状态，直接添加
 		if (LeafDataNode->bIsFading) {
@@ -124,21 +136,30 @@ void FWaterInstanceQuadTree::FrustumCull(FWaterInstanceQuadTree* RootNode, FWate
 		//2. LastFrame不是Culling状态，但是LOD发生变化
 		else if (CurLODIndex != LeafDataNode->LastLodIndex) {
 			RemoveInstanceNode(LeafDataNode, InstanceLODContainer, ManagerPtr->GetInstanceIdToNodeIndex(), ManagerPtr->GetWaterMeshNodeData());
+
 			AddInstanceNode(RootNode->NodesIndeces[0], CurLODIndex, LeafDataNode, InstanceLODContainer, ManagerPtr->GetInstanceIdToNodeIndex());
 		}
+
+		LeafDataNode->LastLodIndex = CurLODIndex;
 
 		LeafDataNode->bIsFading = false;
 	}
 }
 
 void FWaterInstanceQuadTree::InitWaterMeshQuadTree(FWaterInstanceMeshManager* ManagerPtr, int32& LeafNodeIndex) {
+
+	//保存当前节点的的起始NodeIndex
+	int32 CurLeafNodeIndex = LeafNodeIndex;
+
 	if (bIsLeafNode()) {
-		LeafNodeIndex += 1;
+
 		NodesIndeces.Emplace(LeafNodeIndex);
 
 		TMap<uint32, FWaterMeshLeafNodeData>& WaterMeshNodeData = ManagerPtr->GetWaterMeshNodeData();
 
 		WaterMeshNodeData.Emplace(LeafNodeIndex, FWaterMeshLeafNodeData(FTransform(NodeBound.Origin)));
+
+		LeafNodeIndex += 1;
 
 		return;
 	}
@@ -146,12 +167,15 @@ void FWaterInstanceQuadTree::InitWaterMeshQuadTree(FWaterInstanceMeshManager* Ma
 	Split();
 
 	for (auto NodePtr : SubTrees) {
+		check(NodePtr);
 		NodePtr->InitWaterMeshQuadTree(ManagerPtr, LeafNodeIndex);
 	}
 
-	for (int i = 0; i < LeafNodeIndex; ++i) {
-		NodesIndeces.Emplace(LeafNodeIndex);
+	for (int Index = CurLeafNodeIndex; Index < LeafNodeIndex; ++Index) {
+		NodesIndeces.Emplace(Index);
 	}
+
+
 }
 
 void FWaterInstanceQuadTree::MeshTransformBy(const FTransform LocalToWorld){
@@ -195,6 +219,22 @@ void FWaterInstanceQuadTree::Split() {
 	SubTrees[RightDown] = new FWaterInstanceQuadTree(FBoxSphereBounds(RightDownOrigin, HalfExtent, HalfExtent.Size()));
 }
 
+uint8 FWaterInstanceQuadTree::CalclateLODIndex(const FMatrix& ProjMatrix, const FVector& ViewOrigin){
+
+	// ignore perspective foreshortening for orthographic projections
+	//const float DistSqr = FVector::DistSquared(NodeBound.Origin, ViewOrigin) * ProjMatrix.M[2][3];
+
+	////原范围(描述NDC)为[-1,1]，且NodeBound.Sphere必为正，所以直接根据比例缩小一半到[0,1]
+	//const float ScreenMultiple = FMath::Max(0.5f * ProjMatrix.M[0][0], 0.5f * ProjMatrix.M[1][1]);
+
+	//// 再透视除法，不过距离并非严格使用ViewSpace的Z,而是直接使用距离,原因未知
+	//// 不过Dis >= Z
+	//return FMath::Square(ScreenMultiple * NodeBound.SphereRadius) / FMath::Max(1.0f, DistSqr);
+
+	return 0;
+
+}
+
 
 void FWaterInstanceQuadTree::RemoveInstanceNode(
 	FWaterMeshLeafNodeData* RemoveDataNode,
@@ -202,11 +242,12 @@ void FWaterInstanceQuadTree::RemoveInstanceNode(
 	TArray<TMap<uint32, uint32>>& InstanceIdToNodeIndex,
 	TMap<uint32, FWaterMeshLeafNodeData>& WaterMeshNodeData
 ){
+	check(RemoveDataNode->InstanceIndex > 0);
 
 	UWaterInstanceMeshComponent* InstanceComponent = InstanceLODContainer[RemoveDataNode->LastLodIndex];
 	TMap<uint32, uint32>& InstanceToNodeMap = InstanceIdToNodeIndex[RemoveDataNode->LastLodIndex];
 
-	const uint32 EndInstanceId = InstanceComponent->GetInstanceCount() - 1;
+	const uint32 EndInstanceId = InstanceComponent->GetInstanceCount();
 	uint32* EndNodeIndexPtr = InstanceToNodeMap.Find(EndInstanceId);
 	uint32* RemoveNodeIndexPtr = InstanceToNodeMap.Find(RemoveDataNode->InstanceIndex);
 
@@ -218,9 +259,7 @@ void FWaterInstanceQuadTree::RemoveInstanceNode(
 	//修改索引表
 	*RemoveNodeIndexPtr = *EndNodeIndexPtr;
 
-	InstanceComponent->RemoveInstance(RemoveDataNode->InstanceIndex);
-
-	RemoveDataNode->bIsFading = true;
+	InstanceComponent->RemoveInstance(RemoveDataNode->InstanceIndex - 1);
 }
 
 
@@ -257,36 +296,100 @@ FWaterInstanceMeshManager::FWaterInstanceMeshManager(uint32 PlaneSize, float Gri
 }
 
 
-void FWaterInstanceMeshManager::Initial(const FTransform& LocalToWorld) {
+void FWaterInstanceMeshManager::Initial(const FTransform& LocalToWorld, const TArray<UStaticMesh*>& LodAsset, uint32 InstanceCount, AActor* OuterActor, UMaterialInterface* WaterMaterial) {
 
-	int32 NodeIndex = INDEX_NONE;
+	int32 NodeIndex = 0;
 
 	//初始化四叉树并且填充WaterMeshLeafNodeData容器
 	InstanceMeshTree.Get()->InitWaterMeshQuadTree(this, NodeIndex);
-	check(NodeIndex == 1024 - 1);
+	check(NodeIndex == InstanceCount);
 
 	//初始化Mesh的Transform,在此初始化原因是原始四叉树需要RelativeTransform
 	InstanceMeshTree.Get()->MeshTransformBy(LocalToWorld);
 
 	//填充InstanceIdToNodeIndex容器
 	for (int32 i = 0; i < 3; ++i) {
-		const auto Index = InstanceIdToNodeIndex.AddUninitialized(1);
-		TMap<uint32, uint32>* CurMapContainer = &InstanceIdToNodeIndex[Index];
 
-		for (uint32 InstanceID = 0; InstanceID < INSTANCE_COUNT; ++InstanceID) {
+		TMap<uint32, uint32>* CurMapContainer = new (InstanceIdToNodeIndex) TMap<uint32, uint32>();
+
+		//InstanceId从1开始
+		for (uint32 InstanceID = 1; InstanceID <= InstanceCount; ++InstanceID) {
 			CurMapContainer->Emplace(InstanceID, 0xfffffffful);
 		}
 	}
 
-	//
+	//填充Instance容器
+	for (int32 LodIndex = 0; LodIndex < 3; ++LodIndex) {
 
+		const auto Index = WaterMeshLODs.AddUninitialized(1);
+
+		UWaterInstanceMeshComponent** CurMeshInstanceComponentPtr = &WaterMeshLODs[Index];
+
+		*CurMeshInstanceComponentPtr = NewObject<UWaterInstanceMeshComponent>(OuterActor, UWaterInstanceMeshComponent::StaticClass(),NAME_None);
+
+		(*CurMeshInstanceComponentPtr)->RegisterComponent();
+
+		(*CurMeshInstanceComponentPtr)->SetWorldTransform(LocalToWorld);
+
+		//(*CurMeshInstanceComponentPtr)->AddToRoot();
+
+		(*CurMeshInstanceComponentPtr)->SetStaticMesh(LodAsset[LodIndex]);
+
+		(*CurMeshInstanceComponentPtr)->SetMaterial(0, WaterMaterial);
+
+		//MeshComponent->SetCustomPrimitiveDataVector2(0, FVector2D(FMath::Frac(AParticleWaveManager::UVScale1.X * x), FMath::Frac(AParticleWaveManager::UVScale1.Y * y)));
+		//MeshComponent->SetCustomPrimitiveDataVector2(2, FVector2D(FMath::Frac(AParticleWaveManager::UVScale2.X * x), FMath::Frac(AParticleWaveManager::UVScale2.Y * y)));
+		//MeshComponent->SetCustomPrimitiveDataVector2(4, FVector2D(FMath::Frac(AParticleWaveManager::UVScale3.X * x), FMath::Frac(AParticleWaveManager::UVScale3.Y * y)));
+	}
+	
 }
 
-void FWaterInstanceMeshManager::MeshCulling(const FMatrix& ProjectMatrix){
+void FWaterInstanceMeshManager::MeshCulling(ULocalPlayer* LocalPlayer){
 
-	GetViewFrustumBounds(ViewFrustum, ProjectMatrix, true);
+	FSceneViewProjectionData SceneViewProjection;
 
-	FWaterInstanceQuadTree::FrustumCull(InstanceMeshTree.Get(), this);
+	const auto& MiniInfo = LocalPlayer->GetPlayerController(nullptr)->PlayerCameraManager->GetCameraCachePOV();
+
+	FViewport* Viewport = LocalPlayer->ViewportClient->Viewport;
+
+	int32 X = FMath::TruncToInt(LocalPlayer->Origin.X * Viewport->GetSizeXY().X);
+	int32 Y = FMath::TruncToInt(LocalPlayer->Origin.Y * Viewport->GetSizeXY().Y);
+
+	X += Viewport->GetInitialPositionXY().X;
+	Y += Viewport->GetInitialPositionXY().Y;
+
+	uint32 SizeX = FMath::TruncToInt(LocalPlayer->Size.X * Viewport->GetSizeXY().X);
+	uint32 SizeY = FMath::TruncToInt(LocalPlayer->Size.Y * Viewport->GetSizeXY().Y);
+
+	FIntRect UnconstrainedRectangle = FIntRect(X, Y, X + SizeX, Y + SizeY);
+
+	SceneViewProjection.SetViewRectangle(UnconstrainedRectangle);
+
+	SceneViewProjection.ViewOrigin = MiniInfo.Location;
+
+	SceneViewProjection.ViewRotationMatrix = FInverseRotationMatrix(MiniInfo.Rotation) * FMatrix(
+		FPlane(0, 0, 1, 0),
+		FPlane(1, 0, 0, 0),
+		FPlane(0, 1, 0, 0),
+		FPlane(0, 0, 0, 1));
+
+
+	FMinimalViewInfo::CalculateProjectionMatrixGivenView(
+		MiniInfo,
+		LocalPlayer->AspectRatioAxisConstraint, 
+		Viewport,
+		SceneViewProjection
+	);
+
+	//FMatrix ViewMatrix = FMatrix::Identity; 
+	//FMatrix ProjectMatrix = FMatrix::Identity;
+	//FMatrix ViewProjectMatrix = FMatrix::Identity;
+
+	//UGameplayStatics::CalculateViewProjectionMatricesFromMinimalView(MiniInfo, TOptional<FMatrix>(), ViewMatrix, ProjectMatrix, ViewProjectMatrix);
+
+	GetViewFrustumBounds(ViewFrustum, SceneViewProjection.ComputeViewProjectionMatrix(), true);
+
+	FWaterInstanceQuadTree::FrustumCull(InstanceMeshTree.Get(), this, SceneViewProjection.ProjectionMatrix, SceneViewProjection.ViewOrigin);
 }
 
 const FConvexVolume& FWaterInstanceMeshManager::GetViewFrustum() const{
@@ -306,6 +409,12 @@ TMap<uint32, FWaterMeshLeafNodeData>& FWaterInstanceMeshManager::GetWaterMeshNod
 }
 
 
+
 FWaterInstanceMeshManager::~FWaterInstanceMeshManager(){
 
+	//填充Instance容器
+	//for (int i = 0; i < 3; ++i) {
+	//	WaterMeshLODs[i]->RemoveFromRoot();
+	//	WaterMeshLODs[i] = nullptr;
+	//}
 }

@@ -18,4 +18,6 @@ public:
     virtual bool RemoveInstance(int32 InstanceIndex) override;
 
 	virtual int32 AddInstance(const FTransform& InstanceTransform) override;
+
+    virtual FPrimitiveSceneProxy* CreateSceneProxy() override;
 };
