@@ -4,9 +4,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/PlayerController.h"
-
-#define INSTANCE_COUNT 1024
-
+#include "AParticleWaveManager.h"
 
 
 FVector FWaterInstanceQuadTree::MinBound = FVector(0.f);
@@ -153,11 +151,28 @@ void FWaterInstanceQuadTree::InitWaterMeshQuadTree(FWaterInstanceMeshManager* Ma
 
 	if (bIsLeafNode()) {
 
+		FVector2D XYIndex = FVector2D
+		(
+			(NodeBound.Origin.X - FWaterInstanceQuadTree::MinBound.X + ManagerPtr->GetQuadTreeRootNode()->NodeBound.BoxExtent.X) / (2.f * FWaterInstanceQuadTree::MinBound.X),
+			(NodeBound.Origin.Y - FWaterInstanceQuadTree::MinBound.Y + ManagerPtr->GetQuadTreeRootNode()->NodeBound.BoxExtent.Y) / (2.f * FWaterInstanceQuadTree::MinBound.Y)
+		);
+
+		TArray<float, TInlineAllocator<6>> PerInstanceData;
+
+		//#TODO USE SSE
+
+		PerInstanceData.Emplace(FMath::Frac(XYIndex.X * AParticleWaveManager::UVScale1.X));
+		PerInstanceData.Emplace(FMath::Frac(XYIndex.Y * AParticleWaveManager::UVScale1.Y));
+		PerInstanceData.Emplace(FMath::Frac(XYIndex.X * AParticleWaveManager::UVScale2.X));
+		PerInstanceData.Emplace(FMath::Frac(XYIndex.Y * AParticleWaveManager::UVScale2.Y));
+		PerInstanceData.Emplace(FMath::Frac(XYIndex.X * AParticleWaveManager::UVScale3.X));
+		PerInstanceData.Emplace(FMath::Frac(XYIndex.Y * AParticleWaveManager::UVScale3.Y));
+
 		NodesIndeces.Emplace(LeafNodeIndex);
 
 		TMap<uint32, FWaterMeshLeafNodeData>& WaterMeshNodeData = ManagerPtr->GetWaterMeshNodeData();
 
-		WaterMeshNodeData.Emplace(LeafNodeIndex, FWaterMeshLeafNodeData(FTransform(NodeBound.Origin)));
+		WaterMeshNodeData.Emplace(LeafNodeIndex, FWaterMeshLeafNodeData(FTransform(NodeBound.Origin), PerInstanceData));
 
 		LeafNodeIndex += 1;
 
@@ -174,7 +189,6 @@ void FWaterInstanceQuadTree::InitWaterMeshQuadTree(FWaterInstanceMeshManager* Ma
 	for (int Index = CurLeafNodeIndex; Index < LeafNodeIndex; ++Index) {
 		NodesIndeces.Emplace(Index);
 	}
-
 
 }
 
@@ -221,17 +235,28 @@ void FWaterInstanceQuadTree::Split() {
 
 uint8 FWaterInstanceQuadTree::CalclateLODIndex(const FMatrix& ProjMatrix, const FVector& ViewOrigin){
 
-	// ignore perspective foreshortening for orthographic projections
-	//const float DistSqr = FVector::DistSquared(NodeBound.Origin, ViewOrigin) * ProjMatrix.M[2][3];
+	//因为ViewOrigin为 FVector(0.0f, 0.0f, ViewDistance + Bounds.SphereRadius)，所以这里直接计算距离
+	const float Dist = FVector::Dist(NodeBound.Origin, ViewOrigin) + NodeBound.SphereRadius;
 
-	////原范围(描述NDC)为[-1,1]，且NodeBound.Sphere必为正，所以直接根据比例缩小一半到[0,1]
-	//const float ScreenMultiple = FMath::Max(0.5f * ProjMatrix.M[0][0], 0.5f * ProjMatrix.M[1][1]);
+	// 原范围(描述NDC)为[-1,1]，且NodeBound.Sphere必为正，所以直接根据比例缩小一半到[0,1]
+	const float ScreenMultiple = FMath::Max(0.5f * ProjMatrix.M[0][0], 0.5f * ProjMatrix.M[1][1]);
 
-	//// 再透视除法，不过距离并非严格使用ViewSpace的Z,而是直接使用距离,原因未知
-	//// 不过Dis >= Z
-	//return FMath::Square(ScreenMultiple * NodeBound.SphereRadius) / FMath::Max(1.0f, DistSqr);
+	// Calculate screen-space projected radius
+	const float ScreenRadius = ScreenMultiple * NodeBound.SphereRadius / FMath::Max(1.0f, Dist);
 
-	return 0;
+	// For clarity, we end up comparing the diameter
+	const float ScreenSize = ScreenRadius * 2.0f;
+
+	uint8 LODIndex = 0;
+
+	if (ScreenSize > 0.5f)
+		LODIndex = 0;
+	else if (ScreenSize > 0.13f)
+		LODIndex = 1;
+	else
+		LODIndex = 2;
+
+	return LODIndex;
 
 }
 
@@ -290,25 +315,25 @@ FWaterInstanceMeshManager::FWaterInstanceMeshManager(uint32 PlaneSize, float Gri
 
 	FVector Extent = FVector(ExtentSize, ExtentSize, FWaterInstanceQuadTree::MinBound.Z);
 
-	InstanceMeshTree = MakeShared<FWaterInstanceQuadTree>(
+	QuadTreeRootNode = MakeShared<FWaterInstanceQuadTree>(
 		FBoxSphereBounds(CenterPos, Extent, Extent.Size())
 	);
 }
 
 
-void FWaterInstanceMeshManager::Initial(const FTransform& LocalToWorld, const TArray<UStaticMesh*>& LodAsset, uint32 InstanceCount, AActor* OuterActor, UMaterialInterface* WaterMaterial) {
+void FWaterInstanceMeshManager::Initial(const FTransform& LocalToWorld, const TArray<UStaticMesh*>& LodAsset, uint32 InstanceCount, AParticleWaveManager* OuterActor) {
 
 	int32 NodeIndex = 0;
 
 	//初始化四叉树并且填充WaterMeshLeafNodeData容器
-	InstanceMeshTree.Get()->InitWaterMeshQuadTree(this, NodeIndex);
+	QuadTreeRootNode->InitWaterMeshQuadTree(this, NodeIndex);
 	check(NodeIndex == InstanceCount);
 
 	//初始化Mesh的Transform,在此初始化原因是原始四叉树需要RelativeTransform
-	InstanceMeshTree.Get()->MeshTransformBy(LocalToWorld);
+	QuadTreeRootNode->MeshTransformBy(LocalToWorld);
 
 	//填充InstanceIdToNodeIndex容器
-	for (int32 i = 0; i < 3; ++i) {
+	for (int32 i = 0; i < OuterActor->WaterMeshs.Num(); ++i) {
 
 		TMap<uint32, uint32>* CurMapContainer = new (InstanceIdToNodeIndex) TMap<uint32, uint32>();
 
@@ -319,7 +344,7 @@ void FWaterInstanceMeshManager::Initial(const FTransform& LocalToWorld, const TA
 	}
 
 	//填充Instance容器
-	for (int32 LodIndex = 0; LodIndex < 3; ++LodIndex) {
+	for (int32 LodIndex = 0; LodIndex < OuterActor->WaterMeshs.Num(); ++LodIndex) {
 
 		const auto Index = WaterMeshLODs.AddUninitialized(1);
 
@@ -331,15 +356,9 @@ void FWaterInstanceMeshManager::Initial(const FTransform& LocalToWorld, const TA
 
 		(*CurMeshInstanceComponentPtr)->SetWorldTransform(LocalToWorld);
 
-		//(*CurMeshInstanceComponentPtr)->AddToRoot();
-
 		(*CurMeshInstanceComponentPtr)->SetStaticMesh(LodAsset[LodIndex]);
 
-		(*CurMeshInstanceComponentPtr)->SetMaterial(0, WaterMaterial);
-
-		//MeshComponent->SetCustomPrimitiveDataVector2(0, FVector2D(FMath::Frac(AParticleWaveManager::UVScale1.X * x), FMath::Frac(AParticleWaveManager::UVScale1.Y * y)));
-		//MeshComponent->SetCustomPrimitiveDataVector2(2, FVector2D(FMath::Frac(AParticleWaveManager::UVScale2.X * x), FMath::Frac(AParticleWaveManager::UVScale2.Y * y)));
-		//MeshComponent->SetCustomPrimitiveDataVector2(4, FVector2D(FMath::Frac(AParticleWaveManager::UVScale3.X * x), FMath::Frac(AParticleWaveManager::UVScale3.Y * y)));
+		(*CurMeshInstanceComponentPtr)->SetMaterial(0, OuterActor->WaterMaterial);
 	}
 	
 }
@@ -381,15 +400,9 @@ void FWaterInstanceMeshManager::MeshCulling(ULocalPlayer* LocalPlayer){
 		SceneViewProjection
 	);
 
-	//FMatrix ViewMatrix = FMatrix::Identity; 
-	//FMatrix ProjectMatrix = FMatrix::Identity;
-	//FMatrix ViewProjectMatrix = FMatrix::Identity;
-
-	//UGameplayStatics::CalculateViewProjectionMatricesFromMinimalView(MiniInfo, TOptional<FMatrix>(), ViewMatrix, ProjectMatrix, ViewProjectMatrix);
-
 	GetViewFrustumBounds(ViewFrustum, SceneViewProjection.ComputeViewProjectionMatrix(), true);
 
-	FWaterInstanceQuadTree::FrustumCull(InstanceMeshTree.Get(), this, SceneViewProjection.ProjectionMatrix, SceneViewProjection.ViewOrigin);
+	FWaterInstanceQuadTree::FrustumCull(QuadTreeRootNode.Get(), this, SceneViewProjection.ProjectionMatrix, SceneViewProjection.ViewOrigin);
 }
 
 const FConvexVolume& FWaterInstanceMeshManager::GetViewFrustum() const{
@@ -408,13 +421,13 @@ TMap<uint32, FWaterMeshLeafNodeData>& FWaterInstanceMeshManager::GetWaterMeshNod
 	return WaterMeshNodeData;
 }
 
+FWaterInstanceQuadTree* FWaterInstanceMeshManager::GetQuadTreeRootNode()
+{
+	return QuadTreeRootNode.Get();
+}
+
 
 
 FWaterInstanceMeshManager::~FWaterInstanceMeshManager(){
 
-	//填充Instance容器
-	//for (int i = 0; i < 3; ++i) {
-	//	WaterMeshLODs[i]->RemoveFromRoot();
-	//	WaterMeshLODs[i] = nullptr;
-	//}
 }

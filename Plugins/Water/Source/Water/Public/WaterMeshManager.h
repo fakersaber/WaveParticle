@@ -4,15 +4,17 @@
 
 class UWaterInstanceMeshComponent;
 class FWaterInstanceQuadTree;
+class AParticleWaveManager;
 struct FConvexVolume;
 
 
 struct FWaterMeshLeafNodeData {
-	explicit FWaterMeshLeafNodeData(const FTransform& RelativeRT) 
+	explicit FWaterMeshLeafNodeData(const FTransform& RelativeRT, const TArray<float, TInlineAllocator<6>>& PerInstanceData)
 		:
 		bIsFading(true),
 		LastLodIndex(INDEX_NONE),
 		InstanceIndex(INDEX_NONE),
+		UVScaleData(PerInstanceData),
 		RelativeTransform(RelativeRT)
 	{
 
@@ -23,6 +25,8 @@ struct FWaterMeshLeafNodeData {
 	uint8 LastLodIndex;
 
 	uint32 InstanceIndex;
+
+	TArray<float, TInlineAllocator<6>> UVScaleData;
 
 	FTransform RelativeTransform;
 };
@@ -35,7 +39,7 @@ public:
 
 	~FWaterInstanceMeshManager();
 
-	void Initial(const FTransform& LocalToWorld, const TArray<UStaticMesh*>& LodAsset, uint32 InstanceCount, AActor* OuterActor, UMaterialInterface* WaterMaterial);
+	void Initial(const FTransform& LocalToWorld, const TArray<UStaticMesh*>& LodAsset, uint32 InstanceCount, AParticleWaveManager* OuterActor);
 
 	void MeshCulling(ULocalPlayer* LocalPlayer);
 
@@ -47,10 +51,12 @@ public:
 
 	TMap<uint32, FWaterMeshLeafNodeData>& GetWaterMeshNodeData();
 
+	FWaterInstanceQuadTree* GetQuadTreeRootNode();
+
 	//const FMatrix& GetCurProjMatrix() const;
 
 private:
-	TSharedPtr<FWaterInstanceQuadTree> InstanceMeshTree;
+	TSharedPtr<FWaterInstanceQuadTree> QuadTreeRootNode;
 
 	FConvexVolume ViewFrustum;
 

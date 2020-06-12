@@ -56,8 +56,6 @@ bool UWaterInstanceMeshComponent::RemoveInstance(int32 InstanceIndex)
 
 int32 UWaterInstanceMeshComponent::AddInstance(const FTransform& InstanceTransform) {
 
-	//由于优化过后使用的是NonShrinking,所以不是每次Add都需要分配内存
-
 	FInstancedStaticMeshInstanceData* NewInstanceData = new (PerInstanceSMData) FInstancedStaticMeshInstanceData();
 
 	NewInstanceData->Transform = InstanceTransform.ToMatrixWithScale();

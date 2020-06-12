@@ -18,7 +18,6 @@ struct FUpdateTextureRegion2D;
 struct FUpdateFieldStruct;
 
 
-
 UCLASS()
 class WATER_API AParticleWaveManager : public AActor
 {

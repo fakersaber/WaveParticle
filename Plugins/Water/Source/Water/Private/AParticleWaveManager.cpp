@@ -232,7 +232,7 @@ void AParticleWaveManager::InitWaveParticle() {
 
 		WaterMeshManager = MakeShared<FWaterInstanceMeshManager>(PlaneSize.X, GridSize, TileSize.X, GetActorLocation());
 
-		WaterMeshManager->Initial(GetActorTransform(), WaterMeshs, TileSize.X * TileSize.Y, this, WaterMaterial);
+		WaterMeshManager->Initial(GetActorTransform(), WaterMeshs, TileSize.X * TileSize.Y, this);
 
 		//FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
 
