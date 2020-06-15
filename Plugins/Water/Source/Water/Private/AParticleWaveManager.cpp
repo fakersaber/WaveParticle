@@ -234,37 +234,37 @@ void AParticleWaveManager::InitWaveParticle() {
 
 		WaterMeshManager->Initial(GetActorTransform(), WaterMeshs, TileSize.X * TileSize.Y, this);
 
-		//FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
+		FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
 
-		//FVector2D HalfTileMeshSize(TileMeshSize * 0.5f);
+		FVector2D HalfTileMeshSize(TileMeshSize * 0.5f);
 
-		//FVector2D Center(TileSize.X * HalfTileMeshSize.X, TileSize.Y * HalfTileMeshSize.Y);
+		FVector2D Center(TileSize.X * HalfTileMeshSize.X, TileSize.Y * HalfTileMeshSize.Y);
 
-		//for (int y = 0; y < TileSize.Y; ++y) {
-		//	for (int x = 0; x < TileSize.X; ++x) {
+		for (int y = 0; y < TileSize.Y; ++y) {
+			for (int x = 0; x < TileSize.X; ++x) {
 
-		//		FVector PositionOffset(FVector2D(x * TileMeshSize.X + HalfTileMeshSize.X, y * TileMeshSize.Y + HalfTileMeshSize.Y) - Center, 0.f);
-		//		auto NewActor = GetWorld()->SpawnActor<AWaveParticleTile>(WaveClassType, GetActorLocation() + PositionOffset, GetActorRotation());
+				FVector PositionOffset(FVector2D(x * TileMeshSize.X + HalfTileMeshSize.X, y * TileMeshSize.Y + HalfTileMeshSize.Y) - Center, 0.f);
+				auto NewActor = GetWorld()->SpawnActor<AWaveParticleTile>(WaveClassType, GetActorLocation() + PositionOffset, GetActorRotation());
 
-		//		//staic mesh version
-		//		NewActor->GeneratorStaticMesh(WaterMesh);
-		//		UStaticMeshComponent* MeshComponent = NewActor->FindComponentByClass<UStaticMeshComponent>();
+				//staic mesh version
+				NewActor->GeneratorStaticMesh(WaterMesh);
+				UStaticMeshComponent* MeshComponent = NewActor->FindComponentByClass<UStaticMeshComponent>();
 
-		//		//Procudual Mesh version
-		//		//NewActor->GeneratorYLODMesh(GridSize, PlaneSize);
-		//		//UProceduralMeshComponent* MeshComponent = NewActor->FindComponentByClass<UProceduralMeshComponent>();
+				//Procudual Mesh version
+				//NewActor->GeneratorYLODMesh(GridSize, PlaneSize);
+				//UProceduralMeshComponent* MeshComponent = NewActor->FindComponentByClass<UProceduralMeshComponent>();
 
-		//		MeshComponent->SetMaterial(0, WaterMaterial);
+				MeshComponent->SetMaterial(0, WaterMaterial);
 
-		//		MeshComponent->SetCustomPrimitiveDataVector2(0, FVector2D(FMath::Frac(AParticleWaveManager::UVScale1.X * x), FMath::Frac(AParticleWaveManager::UVScale1.Y * y)));
-		//		MeshComponent->SetCustomPrimitiveDataVector2(2, FVector2D(FMath::Frac(AParticleWaveManager::UVScale2.X * x), FMath::Frac(AParticleWaveManager::UVScale2.Y * y)));
-		//		MeshComponent->SetCustomPrimitiveDataVector2(4, FVector2D(FMath::Frac(AParticleWaveManager::UVScale3.X * x), FMath::Frac(AParticleWaveManager::UVScale3.Y * y)));
+				MeshComponent->SetCustomPrimitiveDataVector2(0, FVector2D(FMath::Frac(AParticleWaveManager::UVScale1.X * x), FMath::Frac(AParticleWaveManager::UVScale1.Y * y)));
+				MeshComponent->SetCustomPrimitiveDataVector2(2, FVector2D(FMath::Frac(AParticleWaveManager::UVScale2.X * x), FMath::Frac(AParticleWaveManager::UVScale2.Y * y)));
+				MeshComponent->SetCustomPrimitiveDataVector2(4, FVector2D(FMath::Frac(AParticleWaveManager::UVScale3.X * x), FMath::Frac(AParticleWaveManager::UVScale3.Y * y)));
 
 
-		//		WaveParticleTileContainer.Emplace(NewActor);
-		//		NewActor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
-		//	}
-		//}
+				WaveParticleTileContainer.Emplace(NewActor);
+				NewActor->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+			}
+		}
 	}
 
 }

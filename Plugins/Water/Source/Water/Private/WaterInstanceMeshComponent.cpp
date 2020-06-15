@@ -3,9 +3,10 @@
 
 #include "WaterInstanceMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
-
 #include "StaticMeshResources.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "WaterMeshManager.h"
 
 
 bool UWaterInstanceMeshComponent::RemoveInstance(int32 InstanceIndex)
@@ -78,10 +79,24 @@ int32 UWaterInstanceMeshComponent::AddInstance(const FTransform& InstanceTransfo
 	return PerInstanceSMData.Num();
 }
 
+FBoxSphereBounds UWaterInstanceMeshComponent::CalcBounds(const FTransform& LocalToWorld) const{
+
+	if (GetStaticMesh() && PerInstanceSMData.Num() > 0){
+		const auto& RootBounding = ManagerPtr->GetQuadTreeRootNode()->GetNodeBounding();
+		return RootBounding;
+	}
+	else{
+		return FBoxSphereBounds(LocalToWorld.GetLocation(), FVector::ZeroVector, 0.f);
+	}
+}
+
+
 FPrimitiveSceneProxy* UWaterInstanceMeshComponent::CreateSceneProxy(){
-
-
-
 
 	return Super::CreateSceneProxy();
 }
+
+void UWaterInstanceMeshComponent::SetMeshManager(FWaterInstanceMeshManager* ManagerPtr){
+	this->ManagerPtr = ManagerPtr;
+}
+

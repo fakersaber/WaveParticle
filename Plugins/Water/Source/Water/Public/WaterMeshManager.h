@@ -95,6 +95,8 @@ public:
 
 	uint8 CalclateLODIndex(const FMatrix& ProjMatrix, const FVector& ViewOrigin);
 
+	const FBoxSphereBounds& GetNodeBounding() const;
+
 private:
 
 	static void RemoveInstanceNode

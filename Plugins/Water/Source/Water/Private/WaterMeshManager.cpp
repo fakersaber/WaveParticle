@@ -260,6 +260,11 @@ uint8 FWaterInstanceQuadTree::CalclateLODIndex(const FMatrix& ProjMatrix, const 
 
 }
 
+const FBoxSphereBounds& FWaterInstanceQuadTree::GetNodeBounding() const
+{
+	return NodeBound;
+}
+
 
 void FWaterInstanceQuadTree::RemoveInstanceNode(
 	FWaterMeshLeafNodeData* RemoveDataNode,
@@ -359,6 +364,8 @@ void FWaterInstanceMeshManager::Initial(const FTransform& LocalToWorld, const TA
 		(*CurMeshInstanceComponentPtr)->SetStaticMesh(LodAsset[LodIndex]);
 
 		(*CurMeshInstanceComponentPtr)->SetMaterial(0, OuterActor->WaterMaterial);
+
+		(*CurMeshInstanceComponentPtr)->SetMeshManager(this);
 	}
 	
 }

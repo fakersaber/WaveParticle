@@ -6,6 +6,9 @@
 #include "Components/InstancedStaticMeshComponent.h"
 #include "WaterInstanceMeshComponent.generated.h"
 
+
+class FWaterInstanceMeshManager;
+
 /**
  * 
  */
@@ -19,5 +22,12 @@ public:
 
 	virtual int32 AddInstance(const FTransform& InstanceTransform) override;
 
+    virtual FBoxSphereBounds CalcBounds(const FTransform& LocalToWorld) const override;
+
     virtual FPrimitiveSceneProxy* CreateSceneProxy() override;
+
+    void SetMeshManager(FWaterInstanceMeshManager* ManagerPtr);
+
+private:
+    FWaterInstanceMeshManager* ManagerPtr;
 };
