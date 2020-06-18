@@ -58,54 +58,54 @@ public:
 		FRHIUnorderedAccessView* InWaveParticleField_UAV
 	)
 	{
-		SetShaderValue(RHICmdList, GetComputeShader(), ThreadWidth, StructData.InThreadSize.X);
-		SetShaderValue(RHICmdList, GetComputeShader(), ParticleWidth, StructData.InParticleQuadSize.X);
-		SetShaderValue(RHICmdList, GetComputeShader(), ParticleHeight, StructData.InParticleQuadSize.Y);
-		SetShaderValue(RHICmdList, GetComputeShader(), ParticleNum, StructData.InParticleNum);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundComputeShader(), ThreadWidth, StructData.InThreadSize.X);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundComputeShader(), ParticleWidth, StructData.InParticleQuadSize.X);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundComputeShader(), ParticleHeight, StructData.InParticleQuadSize.Y);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundComputeShader(), ParticleNum, StructData.InParticleNum);
 
-		SetShaderValue(RHICmdList, GetComputeShader(), VectorFieldDensity, StructData.InVectorFieldDensity);
-		SetShaderValue(RHICmdList, GetComputeShader(), ParticleSize, StructData.InParticleSize);
-		SetShaderValue(RHICmdList, GetComputeShader(), Beta, StructData.InBeta);
-		SetShaderValue(RHICmdList, GetComputeShader(), ParticleScale, StructData.InParticleScale);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundComputeShader(), VectorFieldDensity, StructData.InVectorFieldDensity);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundComputeShader(), ParticleSize, StructData.InParticleSize);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundComputeShader(), Beta, StructData.InBeta);
+		SetShaderValue(RHICmdList, RHICmdList.GetBoundComputeShader(), ParticleScale, StructData.InParticleScale);
 		
 
-		SetSRVParameter(RHICmdList, GetComputeShader(), WaveParticlePos_SRV, InWaveParticlePos_SRV);
+		SetSRVParameter(RHICmdList, RHICmdList.GetBoundComputeShader(), WaveParticlePos_SRV, InWaveParticlePos_SRV);
 		if (WaveParticleField_UAV.IsBound()) {
-			RHICmdList.SetUAVParameter(GetComputeShader(), WaveParticleField_UAV.GetBaseIndex(), InWaveParticleField_UAV);
+			RHICmdList.SetUAVParameter(RHICmdList.GetBoundComputeShader(), WaveParticleField_UAV.GetBaseIndex(), InWaveParticleField_UAV);
 		}
 	}
 
 	void UnbindUAV(FRHICommandList& RHICmdList){
 
 		if (WaveParticleField_UAV.IsBound()) {
-			RHICmdList.SetUAVParameter(GetComputeShader(), WaveParticleField_UAV.GetBaseIndex(), nullptr);
+			RHICmdList.SetUAVParameter(RHICmdList.GetBoundComputeShader(), WaveParticleField_UAV.GetBaseIndex(), nullptr);
 		}
 		
 	}
 
-	virtual bool Serialize(FArchive& Ar) override
-	{
-		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+	//virtual bool Serialize(FArchive& Ar) override
+	//{
+	//	bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
-		Ar << ThreadWidth;
-		Ar << ParticleWidth;
-		Ar << ParticleHeight;
-		Ar << VectorFieldDensity;
-		Ar << ParticleSize;
-		Ar << Beta;
-		Ar << ParticleScale;
-		Ar << ParticleNum;
-		Ar << WaveParticlePos_SRV;
-		Ar << WaveParticleField_UAV;
-		
+	//	Ar << ThreadWidth;
+	//	Ar << ParticleWidth;
+	//	Ar << ParticleHeight;
+	//	Ar << VectorFieldDensity;
+	//	Ar << ParticleSize;
+	//	Ar << Beta;
+	//	Ar << ParticleScale;
+	//	Ar << ParticleNum;
+	//	Ar << WaveParticlePos_SRV;
+	//	Ar << WaveParticleField_UAV;
+	//	
 
-		return bShaderHasOutdatedParameters;
-	}
+	//	return bShaderHasOutdatedParameters;
+	//}
 
 private:
 
-	FShaderParameter ThreadWidth;
-	FShaderParameter ParticleWidth;
+	LAYOUT_FIELD(FShaderParameter, ThreadWidth);
+	LAYOUT_FIELD(FShaderParameter, ParticleWidth);
 	FShaderParameter ParticleHeight;
 	FShaderParameter VectorFieldDensity;
 	FShaderParameter ParticleSize;

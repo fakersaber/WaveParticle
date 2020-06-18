@@ -96,7 +96,7 @@ FPrimitiveSceneProxy* UWaterInstanceMeshComponent::CreateSceneProxy(){
 	return Super::CreateSceneProxy();
 }
 
-void UWaterInstanceMeshComponent::SetMeshManager(FWaterInstanceMeshManager* ManagerPtr){
-	this->ManagerPtr = ManagerPtr;
+void UWaterInstanceMeshComponent::SetMeshManager(FWaterInstanceMeshManager* InManagerPtr){
+	this->ManagerPtr = InManagerPtr;
 }
 

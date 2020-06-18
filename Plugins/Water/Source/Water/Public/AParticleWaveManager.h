@@ -102,11 +102,11 @@ public:
 	UPROPERTY(EditAnywhere,Category = WaveParticleParam)
 		TSubclassOf<AWaveParticleTile> WaveClassType;
 
-	//UPROPERTY(EditAnywhere, Category = WaveParticleParam)
-	//	UStaticMesh* WaterMesh;
-	
 	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
-		TArray<UStaticMesh*> WaterMeshs;
+		UStaticMesh* WaterMesh;
+	
+	//UPROPERTY(EditAnywhere, Category = WaveParticleParam)
+	//	TArray<UStaticMesh*> WaterMeshs;
 
 private:
 	
