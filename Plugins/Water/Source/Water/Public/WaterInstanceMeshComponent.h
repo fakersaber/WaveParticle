@@ -26,7 +26,7 @@ public:
 
     virtual FPrimitiveSceneProxy* CreateSceneProxy() override;
 
-    void SetMeshManager(FWaterInstanceMeshManager* ManagerPtr);
+    void SetMeshManager(FWaterInstanceMeshManager* InputManagerPtr);
 
 private:
     FWaterInstanceMeshManager* ManagerPtr;

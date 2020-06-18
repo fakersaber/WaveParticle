@@ -25,7 +25,7 @@
 
 
 #define CPU_PARTICLE_VERSION 0
-
+#define CUSTOM_INSTANCE_CULLING 0
 
 static const float Y_PI = 3.1415926535897932f;
 const FVector2D AParticleWaveManager::UVScale1 = FVector2D(0.125f, 0.125f);
@@ -84,9 +84,11 @@ void AParticleWaveManager::Tick(float DeltaTime) {
 #else
 		UpdateParticle_GPU(DeltaTime);
 #endif
-		ULocalPlayer* LocalPlayer = GetWorld()->GetGameInstance()->GetLocalPlayerByIndex(0);
 
+#if CUSTOM_INSTANCE_CULLING
+		ULocalPlayer* LocalPlayer = GetWorld()->GetGameInstance()->GetLocalPlayerByIndex(0);
 		WaterMeshManager->MeshCulling(LocalPlayer);
+#endif
 	}
 }
 
@@ -229,11 +231,10 @@ void AParticleWaveManager::InitWaveParticle() {
 
 	//Spawn Actor
 	{
-
+#if CUSTOM_INSTANCE_CULLING
 		WaterMeshManager = MakeShared<FWaterInstanceMeshManager>(PlaneSize.X, GridSize, TileSize.X, GetActorLocation());
-
 		WaterMeshManager->Initial(GetActorTransform(), WaterMeshs, TileSize.X * TileSize.Y, this);
-
+#endif
 		FVector2D TileMeshSize(PlaneSize.X * GridSize, PlaneSize.Y * GridSize);
 
 		FVector2D HalfTileMeshSize(TileMeshSize * 0.5f);
