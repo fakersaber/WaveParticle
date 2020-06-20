@@ -1,3 +1,5 @@
+#include "/Engine/Public/Platform.ush"
+
 #ifndef CLEAR_THREAD_GROUP_SIZE
 #define CLEAR_THREAD_GROUP_SIZE 8
 #endif

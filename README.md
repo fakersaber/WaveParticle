@@ -21,5 +21,8 @@ WaveParticle
 
 
 
+**#Annotate**
 
+原Paper在粒子边界处波形函数会发生突变：
+$$f(x) = x - \beta \ \mathrm{sin}x $$，替换为$$f(x) = \mathrm{sin}x$$
 

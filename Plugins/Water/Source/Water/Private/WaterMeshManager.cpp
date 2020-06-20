@@ -6,6 +6,7 @@
 #include "GameFramework/PlayerController.h"
 #include "AParticleWaveManager.h"
 
+#define PerInstanceFloatSize 6
 
 FVector FWaterInstanceQuadTree::MinBound = FVector(0.f);
 
@@ -303,6 +304,12 @@ void FWaterInstanceQuadTree::AddInstanceNode(
 
 	int32 InstanceIndex = InstanceLODContainer[CurLODIndex]->AddInstance(LeafDataNode->RelativeTransform);
 	
+	InstanceLODContainer[CurLODIndex]->SetCustomData(
+		InstanceIndex - 1,
+		LeafDataNode->PerInstanceData,
+		InstanceLODContainer[CurLODIndex]->IsRenderStateDirty()
+	);
+
 	uint32* NodeIndexPtr = InstanceIdToNodeIndex[CurLODIndex].Find(InstanceIndex);
 
 	LeafDataNode->InstanceIndex = InstanceIndex;
@@ -357,8 +364,6 @@ void FWaterInstanceMeshManager::Initial(const FTransform& LocalToWorld, const TA
 
 		*CurMeshInstanceComponentPtr = NewObject<UWaterInstanceMeshComponent>(OuterActor, UWaterInstanceMeshComponent::StaticClass(),NAME_None);
 
-		(*CurMeshInstanceComponentPtr)->RegisterComponent();
-
 		(*CurMeshInstanceComponentPtr)->SetWorldTransform(LocalToWorld);
 
 		(*CurMeshInstanceComponentPtr)->SetStaticMesh(LodAsset[LodIndex]);
@@ -366,6 +371,10 @@ void FWaterInstanceMeshManager::Initial(const FTransform& LocalToWorld, const TA
 		(*CurMeshInstanceComponentPtr)->SetMaterial(0, OuterActor->WaterMaterial);
 
 		(*CurMeshInstanceComponentPtr)->SetMeshManager(this);
+
+		(*CurMeshInstanceComponentPtr)->NumCustomDataFloats = PerInstanceFloatSize;
+
+		(*CurMeshInstanceComponentPtr)->RegisterComponent();
 	}
 	
 }

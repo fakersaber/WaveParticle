@@ -18,6 +18,8 @@ struct FUpdateTextureRegion2D;
 struct FUpdateFieldStruct;
 
 
+
+
 UCLASS()
 class WATER_API AParticleWaveManager : public AActor
 {
@@ -103,11 +105,10 @@ public:
 		TSubclassOf<AWaveParticleTile> WaveClassType;
 
 	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
-		UStaticMesh* WaterMesh;
-	
-	//UPROPERTY(EditAnywhere, Category = WaveParticleParam)
-	//	TArray<UStaticMesh*> WaterMeshs;
+		TArray<UStaticMesh*> WaterMeshs;
 
+	UPROPERTY(EditAnywhere, Category = WaveParticleParam)
+		UStaticMesh* WaterMesh;
 private:
 	
 	//Mesh Manager

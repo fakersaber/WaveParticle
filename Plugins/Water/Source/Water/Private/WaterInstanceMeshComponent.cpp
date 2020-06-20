@@ -18,6 +18,7 @@ bool UWaterInstanceMeshComponent::RemoveInstance(int32 InstanceIndex)
 	if (PerInstanceSMData.IsValidIndex(InstanceIndex))
 	{
 		PerInstanceSMData.RemoveAtSwap(InstanceIndex, 1, false);
+		PerInstanceSMCustomData.RemoveAtSwap(InstanceIndex * NumCustomDataFloats, NumCustomDataFloats, false);
 	}
 
 #if WITH_EDITOR
@@ -61,7 +62,10 @@ int32 UWaterInstanceMeshComponent::AddInstance(const FTransform& InstanceTransfo
 
 	NewInstanceData->Transform = InstanceTransform.ToMatrixWithScale();
 
+	//SetupNewInstanceData(*NewInstanceData, InstanceIndex, InstanceTransform);
 
+	// Add custom data to instance
+	PerInstanceSMCustomData.AddZeroed(NumCustomDataFloats);
 
 #if WITH_EDITOR
 	if (SelectedInstances.Num())

@@ -9,12 +9,12 @@ struct FConvexVolume;
 
 
 struct FWaterMeshLeafNodeData {
-	explicit FWaterMeshLeafNodeData(const FTransform& RelativeRT, const TArray<float, TInlineAllocator<6>>& PerInstanceData)
+	explicit FWaterMeshLeafNodeData(const FTransform& RelativeRT, const TArray<float, TInlineAllocator<6>>& InPerInstanceData)
 		:
 		bIsFading(true),
 		LastLodIndex(INDEX_NONE),
 		InstanceIndex(INDEX_NONE),
-		UVScaleData(PerInstanceData),
+		PerInstanceData(InPerInstanceData),
 		RelativeTransform(RelativeRT)
 	{
 
@@ -26,7 +26,7 @@ struct FWaterMeshLeafNodeData {
 
 	uint32 InstanceIndex;
 
-	TArray<float, TInlineAllocator<6>> UVScaleData;
+	TArray<float/*, TInlineAllocator<6>*/> PerInstanceData;
 
 	FTransform RelativeTransform;
 };
