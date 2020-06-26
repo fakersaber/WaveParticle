@@ -9,12 +9,17 @@
 #define PerInstanceFloatSize 6
 
 FVector FWaterInstanceQuadTree::MinBound = FVector(0.f);
+bool FWaterInstanceQuadTree::bIsTransformMinBound = true;
+
 
 FWaterInstanceQuadTree::FWaterInstanceQuadTree(const FBoxSphereBounds& InNodeBound)
 	:
-	NodeBound(InNodeBound)
+	NodeBound(InNodeBound),
+	bIsLeafNode(false)
 {
-	FMemory::Memzero(SubTrees, sizeof(SubTrees));
+	for (auto& SubNode : SubTrees) {
+		SubNode = nullptr;
+	}
 }
 
 FWaterInstanceQuadTree::~FWaterInstanceQuadTree() {
@@ -89,7 +94,7 @@ bool IntersectBox8Plane(const FVector& InOrigin, const FVector& InExtent, const 
 //空间复杂度：O(n * log4(n))
 //时间复杂度：最好O(1), 最坏O((4n - 1)/3)
 void FWaterInstanceQuadTree::FrustumCull(
-	FWaterInstanceQuadTree* RootNode, 
+	FWaterInstanceQuadTree* CurRootNode, 
 	FWaterInstanceMeshManager* ManagerPtr,
 	const FMatrix& ProjMatrix,
 	const FVector& ViewOrigin
@@ -97,10 +102,10 @@ void FWaterInstanceQuadTree::FrustumCull(
 {
 	const FPlane* PermutedPlanePtr = ManagerPtr->GetViewFrustum().PermutedPlanes.GetData();
 	const TArray<UWaterInstanceMeshComponent*>& InstanceLODContainer = ManagerPtr->GetWaterMeshLODs();
-	bool bIsCulling = IntersectBox8Plane(RootNode->NodeBound.Origin, RootNode->NodeBound.BoxExtent, PermutedPlanePtr);
+	bool bIsCulling = IntersectBox8Plane(CurRootNode->NodeBound.Origin, CurRootNode->NodeBound.BoxExtent, PermutedPlanePtr);
 
 	if (!bIsCulling) {
-		for (const uint32 RemoveNodeIndex : RootNode->NodesIndeces) {
+		for (const uint32 RemoveNodeIndex : CurRootNode->NodesIndeces) {
 			FWaterMeshLeafNodeData* RemoveDataNode = ManagerPtr->GetWaterMeshNodeData().Find(RemoveNodeIndex);
 			check(RemoveDataNode);
 			if (RemoveDataNode->bIsFading) {
@@ -113,30 +118,28 @@ void FWaterInstanceQuadTree::FrustumCull(
 		return;
 	}
 
-	for (FWaterInstanceQuadTree* NodePtr : RootNode->SubTrees) {
+	for (FWaterInstanceQuadTree* NodePtr : CurRootNode->SubTrees) {
 		if (NodePtr != nullptr) {
 			FrustumCull(NodePtr, ManagerPtr, ProjMatrix, ViewOrigin);
 		}
 	}
 
 	//通过测试的节点如果是最小粒度
-	FVector2D CurBoundSize = FVector2D(RootNode->NodeBound.BoxExtent.X, RootNode->NodeBound.BoxExtent.Y);
-	if (FMath::IsNearlyEqual(CurBoundSize.X, MinBound.X) && FMath::IsNearlyEqual(CurBoundSize.Y, MinBound.Y)) {
+	if (CurRootNode->bIsLeafNode) {
+		FWaterMeshLeafNodeData* LeafDataNode = ManagerPtr->GetWaterMeshNodeData().Find(CurRootNode->NodesIndeces[0]);
 
-		FWaterMeshLeafNodeData* LeafDataNode = ManagerPtr->GetWaterMeshNodeData().Find(RootNode->NodesIndeces[0]);
-
-		uint8 CurLODIndex = RootNode->CalclateLODIndex(ProjMatrix, ViewOrigin);
+		uint8 CurLODIndex = CurRootNode->CalclateLODIndex(ProjMatrix, ViewOrigin);
 
 		//1. LastFrame是Culling状态，直接添加
 		if (LeafDataNode->bIsFading) {
-			AddInstanceNode(RootNode->NodesIndeces[0], CurLODIndex, LeafDataNode, InstanceLODContainer, ManagerPtr->GetInstanceIdToNodeIndex());
+			AddInstanceNode(CurRootNode, CurLODIndex, LeafDataNode, InstanceLODContainer, ManagerPtr->GetInstanceIdToNodeIndex());
 		}
 
 		//2. LastFrame不是Culling状态，但是LOD发生变化
 		else if (CurLODIndex != LeafDataNode->LastLodIndex) {
 			RemoveInstanceNode(LeafDataNode, InstanceLODContainer, ManagerPtr->GetInstanceIdToNodeIndex(), ManagerPtr->GetWaterMeshNodeData());
 
-			AddInstanceNode(RootNode->NodesIndeces[0], CurLODIndex, LeafDataNode, InstanceLODContainer, ManagerPtr->GetInstanceIdToNodeIndex());
+			AddInstanceNode(CurRootNode, CurLODIndex, LeafDataNode, InstanceLODContainer, ManagerPtr->GetInstanceIdToNodeIndex());
 		}
 
 		LeafDataNode->LastLodIndex = CurLODIndex;
@@ -150,33 +153,30 @@ void FWaterInstanceQuadTree::InitWaterMeshQuadTree(FWaterInstanceMeshManager* Ma
 	//保存当前节点的的起始NodeIndex
 	int32 CurLeafNodeIndex = LeafNodeIndex;
 
-	if (bIsLeafNode()) {
+	if (FMath::IsNearlyEqual(NodeBound.BoxExtent.X, MinBound.X) && FMath::IsNearlyEqual(NodeBound.BoxExtent.Y, MinBound.Y)) {
 
 		FVector2D XYIndex = FVector2D
 		(
 			(NodeBound.Origin.X - FWaterInstanceQuadTree::MinBound.X + ManagerPtr->GetQuadTreeRootNode()->NodeBound.BoxExtent.X) / (2.f * FWaterInstanceQuadTree::MinBound.X),
 			(NodeBound.Origin.Y - FWaterInstanceQuadTree::MinBound.Y + ManagerPtr->GetQuadTreeRootNode()->NodeBound.BoxExtent.Y) / (2.f * FWaterInstanceQuadTree::MinBound.Y)
 		);
-
 		TArray<float, TInlineAllocator<6>> PerInstanceData;
-
 		//#TODO USE SSE
-
 		PerInstanceData.Emplace(FMath::Frac(XYIndex.X * AParticleWaveManager::UVScale1.X));
 		PerInstanceData.Emplace(FMath::Frac(XYIndex.Y * AParticleWaveManager::UVScale1.Y));
 		PerInstanceData.Emplace(FMath::Frac(XYIndex.X * AParticleWaveManager::UVScale2.X));
 		PerInstanceData.Emplace(FMath::Frac(XYIndex.Y * AParticleWaveManager::UVScale2.Y));
 		PerInstanceData.Emplace(FMath::Frac(XYIndex.X * AParticleWaveManager::UVScale3.X));
 		PerInstanceData.Emplace(FMath::Frac(XYIndex.Y * AParticleWaveManager::UVScale3.Y));
-
-		NodesIndeces.Emplace(LeafNodeIndex);
-
 		TMap<uint32, FWaterMeshLeafNodeData>& WaterMeshNodeData = ManagerPtr->GetWaterMeshNodeData();
+		WaterMeshNodeData.Emplace(LeafNodeIndex, FWaterMeshLeafNodeData(PerInstanceData));
 
-		WaterMeshNodeData.Emplace(LeafNodeIndex, FWaterMeshLeafNodeData(FTransform(NodeBound.Origin), PerInstanceData));
+		//init Node Data
+		this->NodesIndeces.Emplace(LeafNodeIndex);
+		this->bIsLeafNode = true;
 
+		//add leafIndex 
 		LeafNodeIndex += 1;
-
 		return;
 	}
 		
@@ -193,23 +193,26 @@ void FWaterInstanceQuadTree::InitWaterMeshQuadTree(FWaterInstanceMeshManager* Ma
 
 }
 
-void FWaterInstanceQuadTree::MeshTransformBy(const FTransform LocalToWorld){
 
-	NodeBound.TransformBy(LocalToWorld);
+
+void FWaterInstanceQuadTree::BoundingBoxTransformBy(const FTransform LocalToWorld){
+
+	this->RelativeTransform = FTransform(NodeBound.Origin);
+
+	FTransform WorldTransform = this->RelativeTransform * LocalToWorld;
+
+	FBoxSphereBounds CurWorldBound =  FBoxSphereBounds(FVector::ZeroVector, NodeBound.BoxExtent, NodeBound.BoxExtent.Size());
+
+	this->NodeBound = CurWorldBound.TransformBy(WorldTransform);
 
 	for (auto NodePtr : SubTrees) {
 		if (!NodePtr)
 			continue;
-		NodePtr->MeshTransformBy(LocalToWorld);
+		NodePtr->BoundingBoxTransformBy(LocalToWorld);
 	}
 }
 
 
-
-bool FWaterInstanceQuadTree::bIsLeafNode() {
-
-	return (FMath::IsNearlyEqual(NodeBound.BoxExtent.X, MinBound.X) && FMath::IsNearlyEqual(NodeBound.BoxExtent.Y, MinBound.Y));
-}
 
 
 void FWaterInstanceQuadTree::Split() {
@@ -239,7 +242,7 @@ uint8 FWaterInstanceQuadTree::CalclateLODIndex(const FMatrix& ProjMatrix, const 
 	//因为ViewOrigin为 FVector(0.0f, 0.0f, ViewDistance + Bounds.SphereRadius)，所以这里直接计算距离
 	const float Dist = FVector::Dist(NodeBound.Origin, ViewOrigin) + NodeBound.SphereRadius;
 
-	// 原范围(描述NDC)为[-1,1]，且NodeBound.Sphere必为正，所以直接根据比例缩小一半到[0,1]
+	// 原范围(NDC xy)为[-1,1]，且NodeBound.Sphere必为正，所以直接根据比例缩小一半到[0,1]
 	const float ScreenMultiple = FMath::Max(0.5f * ProjMatrix.M[0][0], 0.5f * ProjMatrix.M[1][1]);
 
 	// Calculate screen-space projected radius
@@ -295,14 +298,14 @@ void FWaterInstanceQuadTree::RemoveInstanceNode(
 
 
 void FWaterInstanceQuadTree::AddInstanceNode(
-	uint32 NodeIndex, 
+	FWaterInstanceQuadTree* TobeAddNode,
 	uint8 CurLODIndex, 
 	FWaterMeshLeafNodeData* LeafDataNode,
 	const TArray<UWaterInstanceMeshComponent*>& InstanceLODContainer,
 	TArray<TMap<uint32, uint32>>& InstanceIdToNodeIndex
 ){
 
-	int32 InstanceIndex = InstanceLODContainer[CurLODIndex]->AddInstance(LeafDataNode->RelativeTransform);
+	int32 InstanceIndex = InstanceLODContainer[CurLODIndex]->AddInstance(TobeAddNode->RelativeTransform);
 	
 	InstanceLODContainer[CurLODIndex]->SetCustomData(
 		InstanceIndex - 1,
@@ -314,7 +317,10 @@ void FWaterInstanceQuadTree::AddInstanceNode(
 
 	LeafDataNode->InstanceIndex = InstanceIndex;
 
-	*NodeIndexPtr = NodeIndex;
+	//it must be leafNode
+	check(TobeAddNode->NodesIndeces.Num() == 1)
+
+	*NodeIndexPtr = TobeAddNode->NodesIndeces[0];
 }
 
 
@@ -327,9 +333,7 @@ FWaterInstanceMeshManager::FWaterInstanceMeshManager(uint32 PlaneSize, float Gri
 
 	FVector Extent = FVector(ExtentSize, ExtentSize, FWaterInstanceQuadTree::MinBound.Z);
 
-	QuadTreeRootNode = MakeShared<FWaterInstanceQuadTree>(
-		FBoxSphereBounds(CenterPos, Extent, Extent.Size())
-	);
+	QuadTreeRootNode = MakeShared<FWaterInstanceQuadTree>(FBoxSphereBounds(CenterPos, Extent, Extent.Size()));
 }
 
 
@@ -341,8 +345,8 @@ void FWaterInstanceMeshManager::Initial(const FTransform& LocalToWorld, const TA
 	QuadTreeRootNode->InitWaterMeshQuadTree(this, NodeIndex);
 	check(NodeIndex == InstanceCount);
 
-	//初始化Mesh的Transform,在此初始化原因是原始四叉树需要RelativeTransform
-	QuadTreeRootNode->MeshTransformBy(LocalToWorld);
+	//更新BoundingBox的Transform
+	QuadTreeRootNode->BoundingBoxTransformBy(LocalToWorld);
 
 	//填充InstanceIdToNodeIndex容器
 	for (int32 i = 0; i < OuterActor->WaterMeshs.Num(); ++i) {
@@ -364,6 +368,7 @@ void FWaterInstanceMeshManager::Initial(const FTransform& LocalToWorld, const TA
 
 		*CurMeshInstanceComponentPtr = NewObject<UWaterInstanceMeshComponent>(OuterActor, UWaterInstanceMeshComponent::StaticClass(),NAME_None);
 
+		//AddInstance是使用RelativeTransform
 		(*CurMeshInstanceComponentPtr)->SetWorldTransform(LocalToWorld);
 
 		(*CurMeshInstanceComponentPtr)->SetStaticMesh(LodAsset[LodIndex]);

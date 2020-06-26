@@ -2,11 +2,7 @@ WaveParticle
 
 **Mobile效果**：
 
-![water](assets/water.gif)
-
-![Water_2](assets/Water_2.gif)
-
-
+![Ocean](assets/Ocean.gif)
 
 **#TODO**
 
@@ -14,6 +10,7 @@ WaveParticle
 - [x] OcclusionCull ，Use Soft Occlusion
 - [x] Lod，边缘离线生成Static Mesh Setting
 - [x] Foam，Jocbi
+- [x] 支持Transform的更新（现在未跟随ParticleMa）
 - [ ] IOS Crash
 - Tip1：边缘情况使用材质参数计算，不创建额外资源，保证波形连续。
 - Tip2：使用CS同时对Resources操作，使用interlock可以跨group（GL需要拓展）。
